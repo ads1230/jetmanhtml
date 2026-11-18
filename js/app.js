@@ -153,6 +153,15 @@ function selectSkin(id) {
   if (id === Settings.skin) return;
   Settings.set('skin', id);
   updateSkinPicker(true);
+  warmSprites();
+}
+
+/** Renders the chosen pilot's in-game sprites shortly after it's picked, so the first frame in game doesn't stall. */
+let warmTimer = 0;
+function warmSprites() {
+  if (typeof PilotSprite3D === 'undefined') return;
+  clearTimeout(warmTimer);
+  warmTimer = setTimeout(() => PilotSprite3D.warm(PilotSkin[Settings.skin]), 150);
 }
 
 /** Left/right arrows cycle the pilot's colors on the menu. */
@@ -186,7 +195,7 @@ function layoutMenu() {
   }
 }
 
-/** The pilot on the menu. (The 3D turntable takes over when it's loaded.) */
+/** The 3D pilot slowly turning on the menu (falls back to the flat pilot if the 3D renderer isn't loaded). */
 const turntableCanvas = $('turntable-canvas');
 const turntableCtx = turntableCanvas.getContext('2d');
 let turntableStart = performance.now() / 1000;
@@ -629,6 +638,13 @@ function releasePointer(e) {
 window.addEventListener('pointerup', releasePointer);
 window.addEventListener('pointercancel', releasePointer);
 
+// Touch browsers only let audio start on the end of a tap, so unlock there too.
+for (const type of ['pointerup', 'touchend', 'click']) {
+  window.addEventListener(type, () => {
+    if (typeof sound !== 'undefined') sound.unlock();
+  }, { passive: true });
+}
+
 /** Arrow keys held for steering. */
 const heldArrows = new Set();
 
@@ -767,4 +783,5 @@ applySoundSettings();
 resize();
 showScreen(activeScreen);
 updateGameOverlay(hud, hud, true);
+warmSprites();
 requestAnimationFrame(frame);
