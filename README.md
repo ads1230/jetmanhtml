@@ -9,7 +9,7 @@ Open `index.html` in a browser. It works straight from disk (`file://`) or from 
 - **Landscape (Flap):** click, tap or press Space (or ↑ / Enter) to fire the jetpack and flap through the cave, Flappy Bird style.
 - **Landscape (Glide):** no gravity. Move up or down at a steady speed with ↑ / ↓, by holding the top or bottom half of the screen, or by swiping.
 - **Portrait:** the same cave turned a quarter turn. The pilot climbs on his own; steer with ← / →, by holding the left or right half of the screen, or by swiping.
-- **Swipe steering** (the default on touch screens): swipe toward where you want to go and he moves while your finger moves; slide back to reverse. **Hold** steering moves toward whichever half of the screen you're pressing.
+- **Swipe steering** (the default on touch screens): swipe toward where you want to go and he moves while your finger moves; slide back to reverse. **Hold** steering moves toward whichever half of the screen you're pressing. On touch screens, the Get Ready screen in Glide and portrait shows an animated hint for the chosen controls: a sliding finger for Swipe, or the two screen halves lighting up in turn for Hold.
 - **Menu:** pick one of seven pilots (Navy, Stealth, Pink, Mecha, Vanguard, Joker, Hero) with the swatches or ← / →, then Play. The trophy opens the local top-5 board and the gear opens Settings.
 - **Esc** closes panels and returns to the menu between runs.
 
@@ -55,6 +55,7 @@ The settings match the app:
 | `js/icons.js` | Inline SVG stand-ins for the SF Symbols the app uses | — |
 | `js/scoreboard.js` | Local top-5 scores | `Scoreboard.swift` |
 | `js/sound.js` | Flap, start, crash, high-score, power-up, shield-break and laser sounds synthesized at startup | `SoundEngine.swift` |
+| `js/controlsdemo.js` | Animated touch steering hint on the Get Ready screen (Swipe and Hold) | `ControlsDemo.swift` |
 | `js/app.js` | Screens, HUD and power-up chips, hold/swipe/keyboard input, menu layout choice and the frame loop | `ContentView.swift` |
 
 ## Porting notes

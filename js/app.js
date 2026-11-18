@@ -400,6 +400,35 @@ function fillGameOverCard() {
 onClick($('menu-button'), () => goToMenu());
 onClick($('again-button'), () => model.resetToReady());
 
+// MARK: Controls demo
+
+const demoCanvas = $('controls-demo');
+const demoCtx = demoCanvas.getContext('2d');
+let demoShown = false;
+
+/**
+ * Touch steering hint on the Get Ready screen in Glide and portrait: an
+ * animated finger for Swipe, lit screen halves for Hold. Touch screens only,
+ * like the app (which leaves it out on the Mac).
+ */
+function renderControlsDemo() {
+  const show = activeScreen === 'game' && hud.phase === 'ready' && hud.isSteering && usesTouchWording();
+  if (show !== demoShown) {
+    demoShown = show;
+    setShown(demoCanvas, show);
+  }
+  if (!show) return;
+  const pw = Math.round(view.w * view.dpr), ph = Math.round(view.h * view.dpr);
+  if (demoCanvas.width !== pw || demoCanvas.height !== ph) {
+    demoCanvas.width = pw;
+    demoCanvas.height = ph;
+  }
+  demoCtx.setTransform(1, 0, 0, 1, 0, 0);
+  demoCtx.clearRect(0, 0, pw, ph);
+  demoCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ControlsDemo.draw(demoCtx, view.w, view.h, Date.now() / 1000, !hud.isPortrait, Settings.steerControls);
+}
+
 // MARK: Navigation
 
 function startGame() {
@@ -1001,6 +1030,7 @@ function frame(nowMs) {
   renderer.draw(ctx, model, worldW, worldH);
 
   if (activeScreen === 'menu') renderTurntable(now);
+  renderControlsDemo();
   PanelTitle.renderAll(now);
 }
 
