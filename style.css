@@ -1084,3 +1084,85 @@ button:focus-visible {
 #again-button {
   font-weight: 600;
 }
+
+/* MARK: Power-ups */
+
+.score-bar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.score-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.power-up-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.power-up-chips:empty {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--chip-color);
+  font-variant-numeric: tabular-nums;
+  animation: chip-in 0.3s var(--snappy) both;
+}
+
+.chip.leaving {
+  animation: chip-out 0.22s ease-in both;
+}
+
+.chip .icon {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.chip .times-two {
+  font-weight: 900;
+}
+
+.chip .seconds.tick {
+  animation: seconds-tick 0.3s ease-out;
+}
+
+@keyframes chip-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes chip-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.4); }
+}
+
+@keyframes seconds-tick {
+  from { opacity: 0.2; transform: translateY(-0.35em); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Setting rows that don't apply to the current game mode. */
+.setting-row.inactive {
+  opacity: 0.45;
+}
+
+.setting-row.inactive .segment {
+  pointer-events: none;
+}
+
+.setting-row[hidden] {
+  display: none;
+}

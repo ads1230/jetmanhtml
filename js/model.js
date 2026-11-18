@@ -41,10 +41,45 @@ class GameModel {
 
     /** Chosen in Settings; scales speed and the lane beside each block. */
     this.difficultyLevel = Difficulty.normal;
-    /** 'flap' (landscape, tap to flap) or 'steer' (portrait, hold a side to steer). */
+    /**
+     * 'flap' (landscape: tap to flap against gravity), 'steer' (portrait: the
+     * world is shown rotated so the pilot climbs at a constant speed; hold
+     * left or right to steer) or 'glide' (landscape with portrait-style
+     * controls: no gravity; move up or down at a constant speed).
+     */
     this.controlMode = 'flap';
     /** -1 steering left (toward the top wall in world space), 0 straight, 1 right. */
     this.steerDirection = 0;
+    /** When swipe steering lapses back to straight if no new input arrives (model time), or null. */
+    this.steerExpiry = null;
+    /** Scales the sideways speed for the current input (swipes move faster). */
+    this.steerSpeedScale = 1;
+
+    // Power-up state.
+    /** Power-ups floating in the cave: { x, y, kind }. */
+    this.pickups = [];
+    this.hasShield = false;
+    /** Seconds of invulnerability left after the shield absorbs a hit. */
+    this.invulnerableTimer = 0;
+    /** Seconds left for each timed power-up in effect, by kind. */
+    this.powerUpTimers = new Map();
+    /** 1 = normal blocks; eases toward `miniBlockScale` during Mini Blocks. */
+    this.blockScale = 1;
+    /** 1 = normal speed; eases toward `slowMotionScale` during Slow-Mo. */
+    this.timeScale = 1;
+    /** Increments on every pickup / shield break, so the view can play sounds and haptics. */
+    this.pickupCount = 0;
+    this.shieldBreakCount = 0;
+    /** Ray Gun bolts in flight: { x, y }. */
+    this.bolts = [];
+    /** Increments on every Ray Gun shot and every block it destroys. */
+    this.shotCount = 0;
+    this.blastCount = 0;
+    /** 1 = walls fully visible; eases toward faint while Ghost Walls is active. */
+    this.wallOpacity = 1;
+    this.fireCooldown = 0;
+    this.points = 0;
+    this.blocksUntilPickup = blocksUntilNextPickup();
 
     this.lastTime = null;
     this.nextObstacleX = Infinity;
@@ -59,8 +94,35 @@ class GameModel {
 
   get playerScreenX() { return this.playerOffset; }
   get playerWorldX() { return this.cameraX + this.playerOffset; }
-  /** Climbs ~30 points per second, like the original's counter. */
-  get score() { return Math.trunc(this.distance * 28); }
+  /** Climbs ~30 points per second, like the original's counter (twice as fast with Double Score). */
+  get score() { return Math.trunc(this.points); }
+
+  // MARK: Power-ups
+
+  isActive(kind) {
+    return kind === 'shield' ? this.hasShield : (this.powerUpTimers.get(kind) || 0) > 0;
+  }
+
+  /** Power-ups in effect, for the HUD: { kind, secondsLeft } (seconds rounded up; null for the shield). */
+  get activePowerUps() {
+    const active = [];
+    for (const kind of POWER_UP_IDS) {
+      if (kind === 'shield') {
+        if (this.hasShield) active.push({ kind, secondsLeft: null });
+        continue;
+      }
+      const remaining = this.powerUpTimers.get(kind);
+      if (remaining > 0) active.push({ kind, secondsLeft: Math.ceil(remaining) });
+    }
+    return active;
+  }
+
+  /** An obstacle's rect as currently drawn and collided with (shrunk by Mini Blocks): { x, y, w, h }. */
+  effectiveRect(o) {
+    const w = o.w * (0.5 + 0.5 * this.blockScale);
+    const h = o.h * this.blockScale;
+    return { x: o.x + o.w / 2 - w / 2, y: o.y + o.h / 2 - h / 2, w, h };
+  }
   /**
    * 0 at the start of a run, ramping to 1 after ~1.5 minutes. Only makes the
    * tunnel wind more; speed and spacing stay constant like the original.
@@ -71,16 +133,20 @@ class GameModel {
   /** Nose-up right after a flap, diving nose-down as the fall speeds up. */
   get tilt() {
     if (this.controlMode === 'flap') return Math.max(-0.4, Math.min(0.6, this.velocity * 0.55));
-    // Steering: bank gently toward the side he's moving to.
+    // Gliding: a slight pitch toward the way he's moving. Steering: bank
+    // gently toward the side he's moving to.
     return this.velocity * 0.35;
   }
 
+  /** Steering controls (portrait or landscape glide) rather than flapping. */
+  get usesSteering() { return this.controlMode !== 'flap'; }
+
   /** Forward speed for the current mode, in playfield units per second. */
   get forwardSpeed() {
-    const base = this.controlMode === 'steer'
+    const base = this.usesSteering
       ? GameModel.scrollSpeed * GameModel.steerForwardSpeedMultiplier
       : GameModel.scrollSpeed;
-    return base * this.difficultyLevel.speedMultiplier;
+    return base * this.difficultyLevel.speedMultiplier * this.timeScale;
   }
 
   get timeSinceCrash() { return this.time - this.crashTime; }
@@ -96,9 +162,18 @@ class GameModel {
     this.reset();
   }
 
-  /** Steering input for 'steer' mode. Pressing a side also starts or restarts a run, like a flap does in landscape. */
-  steer(direction) {
+  /**
+   * Steering input for the steering modes. Pressing a side also starts or
+   * restarts a run, like a flap does in landscape. `expiresAfter` (swipe
+   * controls): steering stops on its own if no new input arrives within this
+   * many seconds, so he only moves while the finger is moving; null steers
+   * until told otherwise (hold controls and keys). `speedScale` multiplies
+   * the sideways speed for this input.
+   */
+  steer(direction, expiresAfter = null, speedScale = 1) {
     this.steerDirection = direction;
+    this.steerExpiry = direction === 0 || expiresAfter === null ? null : this.time + expiresAfter;
+    this.steerSpeedScale = speedScale;
     if (direction === 0) return;
     if (this.phase === 'ready') {
       this.startRun();
@@ -114,7 +189,7 @@ class GameModel {
   /** A tap/click/key press: one jetpack burst, Flappy Bird style. */
   flap() {
     // In steering mode a flap key just starts or restarts the run.
-    if (this.controlMode === 'steer') {
+    if (this.usesSteering) {
       if (this.phase === 'ready') {
         this.startRun();
       } else if (this.phase === 'crashed' && this.canRestart) {
@@ -173,6 +248,17 @@ class GameModel {
     this.columns = [];
     this.firstColumnIndex = 0;
     this.obstacles = [];
+    this.pickups = [];
+    this.hasShield = false;
+    this.invulnerableTimer = 0;
+    this.powerUpTimers = new Map();
+    this.blockScale = 1;
+    this.timeScale = 1;
+    this.bolts = [];
+    this.wallOpacity = 1;
+    this.fireCooldown = 0;
+    this.points = 0;
+    this.blocksUntilPickup = blocksUntilNextPickup();
     this.caveCenter = 0.5;
     this.caveDrift = 0;
     this.calmUntilX = Infinity;
@@ -184,6 +270,7 @@ class GameModel {
   startRun() {
     this.phase = 'playing';
     this.distance = 0;
+    this.points = 0;
     // Columns already generated stay calm; give a little more calm cave
     // before the walls start winding.
     this.calmUntilX = this.cameraX + this.aspect + 0.5;
@@ -260,25 +347,45 @@ class GameModel {
     } else if (this.phase === 'playing') {
       this.cameraX += this.forwardSpeed * dt;
       this.distance += this.forwardSpeed * dt;
+      this.points += this.forwardSpeed * dt * 28 * (this.isActive('doubleScore') ? 2 : 1);
+      this.updatePowerUps(dt);
 
       if (this.controlMode === 'flap') {
         this.velocity = Math.min(GameModel.maxFall, this.velocity + GameModel.gravity * dt);
         this.flameTimer = Math.max(0, this.flameTimer - dt);
       } else {
+        if (this.steerExpiry !== null && this.time > this.steerExpiry) {
+          this.steerDirection = 0;
+          this.steerExpiry = null;
+        }
         // Constant climb with no gravity; sideways at a constant speed while
         // a side is held. The jetpack burns steadily.
-        this.velocity = this.steerDirection * GameModel.steerSpeed;
+        this.velocity = this.steerDirection * GameModel.steerSpeed * this.steerSpeedScale;
         this.flameTimer = 0.1;
       }
       this.playerY += this.velocity * dt;
+      if (this.isActive('ghostWalls')) this.keepOnPlayfield();
 
       this.ensureColumns();
       this.spawnObstacles();
       const cutoff = this.cameraX - 0.2;
       this.obstacles = this.obstacles.filter((o) => o.x + o.w >= cutoff);
+      this.pickups = this.pickups.filter((p) => p.x >= cutoff);
       this.emitExhaust(dt);
 
-      if (this.collides()) this.crash();
+      this.collectPickups();
+      const hit = this.collision();
+      if (hit) {
+        if (this.invulnerableTimer > 0) {
+          // Grace period after the shield breaks: blocks pass harmlessly, but
+          // walls still push him back inside.
+          if (hit.wall) this.pushOffWall();
+        } else if (this.hasShield) {
+          this.breakShield(hit);
+        } else {
+          this.crash();
+        }
+      }
     }
 
     this.shake = Math.max(0, this.shake - dt * 2.2);
@@ -371,6 +478,7 @@ class GameModel {
         const offset = random(lane, Math.max(lane, span - height));
         const y = Math.random() < 0.5 ? innerTop + offset : innerBottom - offset - height;
         this.obstacles.push({ x: this.nextObstacleX, y, w: width, h: height });
+        this.spawnPickupIfDue(this.nextObstacleX + width);
       }
       this.nextObstacleX += GameModel.obstacleSpacing;
     }
@@ -386,14 +494,22 @@ class GameModel {
     return [this.playerWorldX + (lx * c - ly * s) * u, this.playerY + (lx * s + ly * c) * u];
   }
 
-  /** Tests the tilted body capsule by sampling circles along its length. */
-  collides() {
+  /** The pilot's collision capsule in world space: [a, b, radius]. */
+  hitCapsule() {
     const steering = this.controlMode === 'steer';
     const start = steering ? GameModel.backHitboxStart : GameModel.hitboxStart;
     const end = steering ? GameModel.backHitboxEnd : GameModel.hitboxEnd;
-    const a = this.worldPoint(start[0], start[1]);
-    const b = this.worldPoint(end[0], end[1]);
-    const r = (steering ? GameModel.backHitboxRadius : GameModel.hitboxRadius) * GameModel.spriteUnit;
+    return [this.worldPoint(start[0], start[1]), this.worldPoint(end[0], end[1]),
+      (steering ? GameModel.backHitboxRadius : GameModel.hitboxRadius) * GameModel.spriteUnit];
+  }
+
+  /**
+   * Tests the tilted body capsule by sampling circles along its length.
+   * Returns { wall: true }, { obstacle: index } or null.
+   */
+  collision() {
+    const [a, b, r] = this.hitCapsule();
+    const ghostWalls = this.isActive('ghostWalls');
     const samples = 8;
     for (let i = 0; i <= samples; i++) {
       const t = i / samples;
@@ -401,14 +517,162 @@ class GameModel {
       const y = a[1] + (b[1] - a[1]) * t;
 
       const bounds = this.caveBounds(x);
-      if (y - r < bounds[0] || y + r > bounds[1]) return true;
-      for (const o of this.obstacles) {
+      if (!ghostWalls && (y - r < bounds[0] || y + r > bounds[1])) return { wall: true };
+      for (let index = 0; index < this.obstacles.length; index++) {
+        const o = this.effectiveRect(this.obstacles[index]);
         const cx = Math.max(o.x, Math.min(x, o.x + o.w));
         const cy = Math.max(o.y, Math.min(y, o.y + o.h));
-        if (Math.hypot(x - cx, y - cy) < r) return true;
+        if (Math.hypot(x - cx, y - cy) < r) return { obstacle: index };
       }
     }
-    return false;
+    return null;
+  }
+
+  // MARK: Power-ups
+
+  updatePowerUps(dt) {
+    const hadGhostWalls = this.isActive('ghostWalls');
+    for (const [kind, remaining] of [...this.powerUpTimers]) {
+      if (remaining - dt <= 0) this.powerUpTimers.delete(kind);
+      else this.powerUpTimers.set(kind, remaining - dt);
+    }
+    if (hadGhostWalls && !this.isActive('ghostWalls')) {
+      // The walls are back: if he's inside the rock, put him back in the cave
+      // with a moment's grace.
+      const bounds = this.caveBounds(this.playerWorldX);
+      const r = this.hitCapsule()[2];
+      if (this.playerY - r < bounds[0] || this.playerY + r > bounds[1]) {
+        this.pushOffWall();
+        this.invulnerableTimer = Math.max(this.invulnerableTimer, PowerUpTuning.ghostWallsGraceTime);
+      }
+    }
+    const targetOpacity = this.isActive('ghostWalls') ? 0.12 : 1;
+    this.wallOpacity += (targetOpacity - this.wallOpacity) * Math.min(1, dt * 5);
+    this.updateRayGun(dt);
+    this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
+    // Ease block size and speed in and out rather than snapping.
+    const targetScale = this.isActive('miniBlocks') ? PowerUpTuning.miniBlockScale : 1;
+    this.blockScale += (targetScale - this.blockScale) * Math.min(1, dt * 4);
+    const targetSpeed = this.isActive('slowMotion') ? PowerUpTuning.slowMotionScale : 1;
+    this.timeScale += (targetSpeed - this.timeScale) * Math.min(1, dt * 3);
+  }
+
+  /** Stops the pilot leaving the playfield (only matters while the walls are ghosts). */
+  keepOnPlayfield() {
+    const r = this.hitCapsule()[2];
+    if (this.playerY < r) {
+      this.playerY = r;
+      this.velocity = Math.max(this.velocity, 0);
+    } else if (this.playerY > 1 - r) {
+      this.playerY = 1 - r;
+      this.velocity = Math.min(this.velocity, 0);
+    }
+  }
+
+  /** Fires bolts forward while the Ray Gun is active; bolts destroy the first block they touch. */
+  updateRayGun(dt) {
+    this.fireCooldown -= dt;
+    if (this.isActive('rayGun') && this.fireCooldown <= 0) {
+      this.fireCooldown = PowerUpTuning.rayGunFireInterval;
+      // From his front: the helmet in the side view, the top of his head from behind.
+      const muzzle = this.controlMode === 'steer' ? this.worldPoint(22, 0) : this.worldPoint(18, -2);
+      this.bolts.push({ x: muzzle[0], y: muzzle[1] });
+      this.shotCount += 1;
+    }
+    const step = (this.forwardSpeed + PowerUpTuning.boltSpeed) * dt;
+    const remaining = [];
+    for (const bolt of this.bolts) {
+      bolt.x += step;
+      if (!(bolt.x < this.cameraX + this.aspect + 0.3)) continue;
+      const index = this.obstacles.findIndex((o) => {
+        const r = this.effectiveRect(o);
+        return bolt.x >= r.x - 0.01 && bolt.x < r.x + r.w + 0.01 && bolt.y >= r.y - 0.01 && bolt.y < r.y + r.h + 0.01;
+      });
+      if (index >= 0) {
+        const r = this.effectiveRect(this.obstacles[index]);
+        this.burst(r.x + r.w / 2, r.y + r.h / 2, 36, 0.3, 1.0);
+        this.obstacles.splice(index, 1);
+        this.blastCount += 1;
+        continue;
+      }
+      remaining.push(bolt);
+    }
+    this.bolts = remaining;
+  }
+
+  /** Places a power-up in the clear gap after a block, every few blocks. */
+  spawnPickupIfDue(blockEndX) {
+    // One power-up at a time: none while one is in effect (including a shield
+    // still held) or another is still floating in the cave. Blocks only count
+    // toward the next one while nothing is in play, so there's always a full
+    // gap after an effect ends.
+    if (this.activePowerUps.length > 0 || this.pickups.length > 0) return;
+    this.blocksUntilPickup -= 1;
+    if (this.blocksUntilPickup > 0) return;
+    this.blocksUntilPickup = blocksUntilNextPickup();
+    const x = blockEndX + (GameModel.obstacleSpacing - GameModel.obstacleWidth) / 2;
+    const bounds = this.caveBounds(x);
+    const kind = POWER_UP_IDS[Math.floor(Math.random() * POWER_UP_IDS.length)];
+    this.pickups.push({ x, y: (bounds[0] + bounds[1]) / 2, kind });
+  }
+
+  collectPickups() {
+    const [a, b, r] = this.hitCapsule();
+    const abx = b[0] - a[0], aby = b[1] - a[1];
+    const lengthSquared = Math.max(abx * abx + aby * aby, 1e-9);
+    this.pickups = this.pickups.filter((pickup) => {
+      // Distance from the pickup to the nearest point on the capsule's spine.
+      const t = Math.max(0, Math.min(1, ((pickup.x - a[0]) * abx + (pickup.y - a[1]) * aby) / lengthSquared));
+      const nx = a[0] + abx * t, ny = a[1] + aby * t;
+      if (!(Math.hypot(pickup.x - nx, pickup.y - ny) < r + PowerUpTuning.radius)) return true;
+      this.apply(pickup);
+      return false;
+    });
+  }
+
+  apply(pickup) {
+    const duration = PowerUpKind[pickup.kind].duration;
+    if (duration !== null) this.powerUpTimers.set(pickup.kind, duration);
+    else this.hasShield = true;
+    this.pickupCount += 1;
+    this.burst(pickup.x, pickup.y, 24, 0.2, 0.6);
+  }
+
+  /** The shield absorbs a hit: destroy the block, or push off the wall. */
+  breakShield(hit) {
+    this.hasShield = false;
+    this.invulnerableTimer = PowerUpTuning.shieldGraceTime;
+    this.shieldBreakCount += 1;
+    this.shake = 0.45;
+    if (hit.wall) {
+      this.burst(this.playerWorldX, this.playerY, 30, 0.3, 0.9);
+      this.pushOffWall();
+    } else {
+      const r = this.effectiveRect(this.obstacles[hit.obstacle]);
+      this.burst(r.x + r.w / 2, r.y + r.h / 2, 40, 0.3, 1.0);
+      this.obstacles.splice(hit.obstacle, 1);
+    }
+  }
+
+  /** Moves the pilot back inside the cave and sends him toward its middle. */
+  pushOffWall() {
+    const bounds = this.caveBounds(this.playerWorldX);
+    const margin = this.hitCapsule()[2] * 1.6;
+    this.playerY = Math.max(bounds[0] + margin, Math.min(bounds[1] - margin, this.playerY));
+    const towardCenter = this.playerY < (bounds[0] + bounds[1]) / 2 ? 1 : -1;
+    if (this.controlMode === 'flap') this.velocity = towardCenter > 0 ? 0.3 : -GameModel.flapVelocity;
+    else this.velocity = 0;
+  }
+
+  burst(x, y, count, minPower, maxPower) {
+    for (let i = 0; i < count; i++) {
+      const angle = random(0, TAU);
+      const speed = random(minPower, maxPower);
+      this.particles.push({
+        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        life: random(0.3, 0.8), maxLife: 0.8, size: random(0.004, 0.008), kind: ParticleKind.spark, spin: 0,
+      });
+    }
   }
 
   // MARK: Particles

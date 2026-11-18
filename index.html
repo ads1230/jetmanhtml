@@ -46,8 +46,12 @@
     <!-- In-game overlays: score bar, Get Ready and Game Over cards. -->
     <div id="game-screen" class="screen is-hidden">
       <div id="score-bar" class="score-bar is-hidden">
-        <div class="glass capsule score-pill"><span class="label-icon" data-icon="flame"></span><span id="score-value">0</span></div>
-        <div class="glass capsule best-pill"><span class="label-icon" data-icon="crown"></span><span id="best-value">0</span></div>
+        <div class="score-row-top">
+          <div class="glass capsule score-pill"><span class="label-icon" data-icon="flame"></span><span id="score-value">0</span></div>
+          <div class="glass capsule best-pill"><span class="label-icon" data-icon="crown"></span><span id="best-value">0</span></div>
+        </div>
+        <!-- Active power-ups: icon plus seconds left (the shield shows until used). -->
+        <div id="power-up-chips" class="power-up-chips"></div>
       </div>
 
       <div id="ready-card" class="ready-card">
@@ -102,6 +106,18 @@
           <div id="mode-detail" class="setting-detail"></div>
         </div>
 
+        <div id="landscape-row" class="setting-row">
+          <div class="setting-title" id="landscape-title">Landscape controls</div>
+          <div id="landscape-picker" class="segmented" role="radiogroup" aria-labelledby="landscape-title"></div>
+          <div id="landscape-detail" class="setting-detail"></div>
+        </div>
+
+        <div id="steering-row" class="setting-row">
+          <div class="setting-title" id="steering-title">Steering controls</div>
+          <div id="steering-picker" class="segmented" role="radiogroup" aria-labelledby="steering-title"></div>
+          <div id="steering-detail" class="setting-detail"></div>
+        </div>
+
         <div class="setting-row">
           <div class="setting-title" id="difficulty-title">Difficulty</div>
           <div id="difficulty-picker" class="segmented" role="radiogroup" aria-labelledby="difficulty-title"></div>
@@ -140,6 +156,7 @@
   <script src="js/util.js"></script>
   <script src="js/skins.js"></script>
   <script src="js/settings.js"></script>
+  <script src="js/powerups.js"></script>
   <script src="js/model.js"></script>
   <script src="js/pilot2d.js"></script>
   <script src="js/renderer.js"></script>

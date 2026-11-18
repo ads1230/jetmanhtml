@@ -31,7 +31,10 @@ const view = { w: 1, h: 1, dpr: 1 };
  */
 let hud = {
   phase: 'ready', score: 0, best: model.best, isNewBest: false, showGameOver: false,
-  canRestart: false, crashCount: 0, flapCount: 0, isSteering: false,
+  canRestart: false, crashCount: 0, flapCount: 0,
+  /** 'flap', 'steer' (portrait) or 'glide'. Steering means either of the last two. */
+  controlMode: 'flap', isSteering: false, isPortrait: false,
+  powerUps: [], powerUpKey: '', pickupCount: 0, shieldBreakCount: 0, shotCount: 0, blastCount: 0,
 };
 
 function syncHUD() {
@@ -44,11 +47,23 @@ function syncHUD() {
     canRestart: model.canRestart,
     crashCount: model.crashCount,
     flapCount: model.flapCount,
-    isSteering: model.controlMode === 'steer',
+    controlMode: model.controlMode,
+    isSteering: model.controlMode !== 'flap',
+    isPortrait: model.controlMode === 'steer',
+    powerUps: model.activePowerUps,
+    pickupCount: model.pickupCount,
+    shieldBreakCount: model.shieldBreakCount,
+    shotCount: model.shotCount,
+    blastCount: model.blastCount,
   };
+  next.powerUpKey = next.powerUps.map((p) => `${p.kind}:${p.secondsLeft === null ? '' : p.secondsLeft}`).join('|');
   const prev = hud;
   hud = next;
   if (next.flapCount !== prev.flapCount) onFlap();
+  if (next.pickupCount !== prev.pickupCount) onPickup();
+  if (next.shieldBreakCount !== prev.shieldBreakCount) onShieldBreak();
+  if (next.shotCount !== prev.shotCount) playSound('laser');
+  if (next.blastCount !== prev.blastCount) playSound('shieldBreak');
   if (next.crashCount !== prev.crashCount) onCrash();
   if (next.phase !== prev.phase) onPhaseChange();
   updateGameOverlay(prev, next);
@@ -56,9 +71,23 @@ function syncHUD() {
 
 // MARK: Events from the model
 
+function playSound(effect) {
+  if (typeof sound !== 'undefined') sound.play(effect);
+}
+
 function onFlap() {
-  if (typeof sound !== 'undefined') sound.play('flap');
+  playSound('flap');
   haptic('light');
+}
+
+function onPickup() {
+  playSound('powerUp');
+  haptic('medium');
+}
+
+function onShieldBreak() {
+  playSound('shieldBreak');
+  haptic('shield');
 }
 
 function onCrash() {
@@ -79,11 +108,13 @@ function onPhaseChange() {
   }
 }
 
-/** Haptics: a light tap per flap and a heavier bump on a crash (where the browser can vibrate). */
+/** Haptics (where the browser can vibrate): a light tap per flap, a medium one per pickup, heavier bumps for a shield break and a crash. */
+const HAPTIC_MS = { light: 8, medium: 15, shield: 25, heavy: 35 };
+
 function haptic(weight) {
   if (!Settings.haptics || !canVibrate()) return;
   try {
-    navigator.vibrate(weight === 'heavy' ? 35 : 8);
+    navigator.vibrate(HAPTIC_MS[weight] || 8);
   } catch (e) {
     // Vibration can be blocked; ignore.
   }
@@ -244,27 +275,88 @@ function usesTouchWording() {
   return matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
 
-function promptText(steering) {
-  if (usesTouchWording()) return steering ? 'Hold left or right to fly' : 'Tap to fly';
-  return steering ? 'Hold ← or → to fly' : 'Click or press Space to fly';
+function promptText(mode) {
+  if (!usesTouchWording()) {
+    return { steer: 'Hold ← or → to fly', glide: 'Hold ↑ or ↓ to fly', flap: 'Click or press Space to fly' }[mode];
+  }
+  const swipe = Settings.steerControls === 'swipe';
+  if (mode === 'steer') return swipe ? 'Swipe left or right to fly' : 'Hold left or right to fly';
+  if (mode === 'glide') return swipe ? 'Swipe up or down to fly' : 'Hold the top or bottom to fly';
+  return 'Tap to fly';
 }
 
-function howToPlayText(steering) {
-  if (usesTouchWording()) {
-    return steering
-      ? 'Hold left or right to steer as you climb.\nDodge the walls and blocks.'
-      : 'Tap to fire the jetpack.\nDodge the walls and blocks.';
+function howToPlayText(mode) {
+  const dodge = '\nDodge the walls and blocks.';
+  if (!usesTouchWording()) {
+    return {
+      steer: 'Hold ← or → to steer as you climb.',
+      glide: 'Hold ↑ or ↓ to glide up and down.',
+      flap: 'Click or press Space to fire the jetpack.',
+    }[mode] + dodge;
   }
-  return steering
-    ? 'Hold ← or → to steer as you climb.\nDodge the walls and blocks.'
-    : 'Click or press Space to fire the jetpack.\nDodge the walls and blocks.';
+  const swipe = Settings.steerControls === 'swipe';
+  if (mode === 'steer') return (swipe ? 'Swipe left or right to steer as you climb.' : 'Hold left or right to steer as you climb.') + dodge;
+  if (mode === 'glide') return (swipe ? 'Swipe up or down to glide.' : 'Hold the top or bottom of the screen to glide.') + dodge;
+  return 'Tap to fire the jetpack.' + dodge;
 }
 
 function updateReadyText() {
-  $('prompt').textContent = promptText(hud.isSteering);
-  $('how-to').textContent = howToPlayText(hud.isSteering);
+  $('prompt').textContent = promptText(hud.controlMode);
+  $('how-to').textContent = howToPlayText(hud.controlMode);
   // In portrait the pilot sits low on screen; keep the prompt above him.
-  $('ready-card').style.setProperty('--ready-bottom', hud.isSteering ? `${Math.round(view.h * 0.38)}px` : '40px');
+  $('ready-card').style.setProperty('--ready-bottom', hud.isPortrait ? `${Math.round(view.h * 0.38)}px` : '40px');
+}
+
+/** Active power-ups, shown below the score while playing: icon plus seconds left (the shield shows until used). */
+function updatePowerUpChips() {
+  const container = $('power-up-chips');
+  const shown = hud.phase === 'playing' ? hud.powerUps : [];
+  if (shown.length === 0 && hud.phase !== 'playing') {
+    // The chips go with the run, all at once.
+    container.textContent = '';
+    return;
+  }
+  const chips = new Map();
+  for (const chip of [...container.children]) {
+    if (!chip.classList.contains('leaving')) chips.set(chip.dataset.kind, chip);
+  }
+  for (const [kind, chip] of chips) {
+    if (shown.some((p) => p.kind === kind)) continue;
+    chip.classList.add('leaving');
+    chip.addEventListener('animationend', () => chip.remove(), { once: true });
+    setTimeout(() => chip.remove(), 400);
+  }
+  for (const powerUp of shown) {
+    const kind = PowerUpKind[powerUp.kind];
+    let chip = chips.get(powerUp.kind);
+    if (!chip) {
+      chip = element('div', 'glass capsule chip');
+      chip.dataset.kind = powerUp.kind;
+      chip.style.setProperty('--chip-color', css(kind.color));
+      chip.setAttribute('role', 'status');
+      const icon = element('span', 'chip-icon');
+      if (kind.icon) icon.innerHTML = powerUpIconSVG(kind.icon);
+      else icon.append(element('span', 'times-two', '×2'));
+      chip.append(icon, element('span', 'seconds'));
+      // Keep the app's order (shield, mini blocks, slow-mo, double score, ghost walls, ray gun).
+      const order = POWER_UP_IDS.indexOf(powerUp.kind);
+      const before = [...container.children].find((c) => POWER_UP_IDS.indexOf(c.dataset.kind) > order);
+      container.insertBefore(chip, before || null);
+    }
+    const seconds = chip.querySelector('.seconds');
+    const text = powerUp.secondsLeft === null ? '' : `${powerUp.secondsLeft}s`;
+    if (seconds.textContent !== text) {
+      const counting = seconds.textContent !== '';
+      seconds.textContent = text;
+      seconds.hidden = text === '';
+      if (counting) {
+        seconds.classList.remove('tick');
+        void seconds.offsetWidth; // restart the count-down animation
+        seconds.classList.add('tick');
+      }
+    }
+    chip.setAttribute('aria-label', powerUp.secondsLeft === null ? kind.name : `${kind.name}, ${powerUp.secondsLeft} seconds`);
+  }
 }
 
 function updateGameOverlay(prev, next, force = false) {
@@ -276,9 +368,10 @@ function updateGameOverlay(prev, next, force = false) {
   if (force || prev.score !== next.score || prev.best !== next.best) {
     $('best-value').textContent = String(Math.max(next.best, next.score));
   }
-  if (force || prev.isSteering !== next.isSteering || (next.phase === 'ready' && prev.phase !== 'ready')) {
+  if (force || prev.controlMode !== next.controlMode || (next.phase === 'ready' && prev.phase !== 'ready')) {
     updateReadyText();
   }
+  if (force || prev.phase !== next.phase || prev.powerUpKey !== next.powerUpKey) updatePowerUpChips();
   const gameOverShown = next.phase === 'crashed' && next.showGameOver;
   if (force || gameOverShown !== (prev.phase === 'crashed' && prev.showGameOver)) {
     if (gameOverShown) fillGameOverCard();
@@ -492,6 +585,30 @@ const updateModePicker = segmented($('mode-picker'), MODE_LOCK_IDS, MODE_LOCK_ID
     updateSettingsPanel();
   });
 
+const updateLandscapePicker = segmented($('landscape-picker'), LANDSCAPE_STYLE_IDS,
+  LANDSCAPE_STYLE_IDS.map((id) => LandscapeStyle[id].name), () => Settings.landscapeStyle, (id) => {
+    Settings.set('landscapeStyle', id);
+    updateSettingsPanel();
+  });
+
+const updateSteeringPicker = segmented($('steering-picker'), STEER_CONTROLS_IDS,
+  STEER_CONTROLS_IDS.map((id) => SteerControls[id].name), () => Settings.steerControls, (id) => {
+    Settings.set('steerControls', id);
+    updateSettingsPanel();
+    updateReadyText();
+  });
+
+/** Dims a setting that doesn't apply to the current game mode, and stops it being changed. */
+function setRowActive(row, active) {
+  row.classList.toggle('inactive', !active);
+  for (const button of row.querySelectorAll('.segment')) button.disabled = !active;
+}
+
+/** Touch steering only matters on touch screens (the app hides it on the Mac). */
+function hasTouch() {
+  return matchMedia('(any-pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+}
+
 const updateDifficultyPicker = segmented($('difficulty-picker'), DIFFICULTY_IDS,
   DIFFICULTY_IDS.map((id) => Difficulty[id].name), () => Settings.difficulty, (id) => {
     Settings.set('difficulty', id);
@@ -500,8 +617,17 @@ const updateDifficultyPicker = segmented($('difficulty-picker'), DIFFICULTY_IDS,
 
 function updateSettingsPanel() {
   updateModePicker();
+  updateLandscapePicker();
+  updateSteeringPicker();
   updateDifficultyPicker();
   $('mode-detail').textContent = ModeLock[Settings.modeLock].detail;
+  $('landscape-detail').textContent = LandscapeStyle[Settings.landscapeStyle].detail;
+  $('steering-detail').textContent = SteerControls[Settings.steerControls].detail;
+  // Landscape controls only matter when the game can play landscape; steering
+  // controls only when a steering mode (portrait, or landscape glide) can come up.
+  setRowActive($('landscape-row'), Settings.modeLock !== 'portrait');
+  $('steering-row').hidden = !hasTouch();
+  setRowActive($('steering-row'), Settings.modeLock !== 'landscape' || Settings.landscapeStyle === 'glide');
   $('difficulty-detail').textContent = Difficulty[Settings.difficulty].detail;
   $('sound-toggle').checked = Settings.soundEnabled;
   const slider = $('volume-slider');
@@ -585,51 +711,130 @@ onClick($('alert-reset'), () => {
 
 // MARK: Input
 
-/** Pointers currently held, for steering: pointerId → x. */
+/** Pointers currently held: pointerId → { x, y, startX, startY }. */
 const heldPointers = new Map();
+/** The pointer that steers (the latest one pressed). */
 let steeringPointer = null;
+
+/** How far the finger must slide to count as a swipe, or to reverse one (CSS pixels). */
+const SWIPE_THRESHOLD = 6;
+/** How long a swipe keeps steering after the finger last moved, in seconds. */
+const SWIPE_HOLD_TIME = 0.25;
+/** Swipes move faster than holding, so each swipe covers more ground. */
+const SWIPE_SPEED_SCALE = 1.3;
+
+/**
+ * Swipe steering: once the finger slides, its movement (not which half it's
+ * on) sets the direction. `extreme` is the furthest point reached in the
+ * current direction, for detecting a reversal.
+ */
+const swipe = { active: false, direction: 0, extreme: 0 };
+
+function resetSwipe() {
+  swipe.active = false;
+  swipe.direction = 0;
+  swipe.extreme = 0;
+}
 
 /** Whether an event target is a control or panel that handles its own input. */
 function isInteractive(target) {
   return target instanceof Element && !!target.closest('button, input, select, label, .overlay');
 }
 
-function steerToward(x) {
-  model.steer(x < view.w / 2 ? -1 : 1);
+/**
+ * Steering direction for a pointer: −1 toward the top (glide) or left
+ * (portrait), 1 the other way. Hold controls steer by which half of the
+ * screen the finger is on. Swipe controls steer by the direction the finger
+ * slides, reversing when it moves back, and don't move until it slides.
+ */
+function steeringDirection(p) {
+  // Glide steers vertically; portrait steers horizontally.
+  const position = hud.isPortrait ? p.x : p.y;
+  const start = hud.isPortrait ? p.startX : p.startY;
+  const extent = hud.isPortrait ? view.w : view.h;
+
+  if (Settings.steerControls === 'hold') return position < extent / 2 ? -1 : 1;
+  if (!swipe.active) {
+    // Not swiping yet: wait for the finger to slide.
+    if (Math.abs(position - start) < SWIPE_THRESHOLD) return 0;
+    swipe.active = true;
+    swipe.direction = position < start ? -1 : 1;
+    swipe.extreme = position;
+  }
+  if (swipe.direction < 0) {
+    swipe.extreme = Math.min(swipe.extreme, position);
+    if (position - swipe.extreme > SWIPE_THRESHOLD) {
+      swipe.direction = 1;
+      swipe.extreme = position;
+    }
+  } else {
+    swipe.extreme = Math.max(swipe.extreme, position);
+    if (swipe.extreme - position > SWIPE_THRESHOLD) {
+      swipe.direction = -1;
+      swipe.extreme = position;
+    }
+  }
+  return swipe.direction;
 }
 
-// Landscape: flap on press (not release), like Flappy Bird.
-// Portrait: hold the left or right half of the screen to steer.
+/** Steers from a held pointer. Swipes only steer while the finger is moving: each movement keeps him going briefly, then he levels out. */
+function steerWith(p) {
+  const swiping = Settings.steerControls === 'swipe';
+  model.steer(steeringDirection(p), swiping ? SWIPE_HOLD_TIME : null, swiping ? SWIPE_SPEED_SCALE : 1);
+}
+
+// Flap: flap on press (not release), like Flappy Bird.
+// Portrait and Glide: hold a half of the screen, or swipe, to steer.
 appEl.addEventListener('pointerdown', (e) => {
   if (typeof sound !== 'undefined') sound.unlock();
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (isInteractive(e.target)) return;
   if (activeScreen !== 'game') return;
   e.preventDefault();
+  try {
+    appEl.setPointerCapture(e.pointerId);
+  } catch (err) {
+    // Not capturable (already released); ignore.
+  }
+  const wasPressed = heldPointers.size > 0;
+  const p = { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY };
+  heldPointers.set(e.pointerId, p);
   if (hud.isSteering) {
-    heldPointers.set(e.pointerId, e.clientX);
     steeringPointer = e.pointerId;
-    steerToward(e.clientX);
+    resetSwipe();
+    // Swipe controls don't move on a plain press, so a touch on its own starts
+    // (or restarts) the run.
+    if (Settings.steerControls === 'swipe' && !wasPressed) model.flap();
+    steerWith(p);
   } else {
     model.flap();
   }
 });
 
 window.addEventListener('pointermove', (e) => {
-  if (!heldPointers.has(e.pointerId)) return;
-  heldPointers.set(e.pointerId, e.clientX);
-  if (e.pointerId === steeringPointer && activeScreen === 'game' && hud.isSteering) steerToward(e.clientX);
+  const p = heldPointers.get(e.pointerId);
+  if (!p) return;
+  p.x = e.clientX;
+  p.y = e.clientY;
+  if (e.pointerId === steeringPointer && activeScreen === 'game' && hud.isSteering) steerWith(p);
 });
 
 function releasePointer(e) {
   if (!heldPointers.delete(e.pointerId)) return;
   if (e.pointerId !== steeringPointer) return;
-  // Another finger still down keeps steering toward its side.
+  resetSwipe();
   const remaining = [...heldPointers.entries()];
-  if (remaining.length > 0 && hud.isSteering) {
-    const [id, x] = remaining[remaining.length - 1];
+  if (remaining.length > 0) {
+    // Another finger still down takes over: holding keeps steering toward its
+    // side; a swipe starts again from where it is.
+    const [id, p] = remaining[remaining.length - 1];
     steeringPointer = id;
-    steerToward(x);
+    p.startX = p.x;
+    p.startY = p.y;
+    if (hud.isSteering) {
+      if (Settings.steerControls === 'hold') steerWith(p);
+      else model.steer(0);
+    }
   } else {
     steeringPointer = null;
     if (hud.isSteering) model.steer(0);
@@ -645,11 +850,18 @@ for (const type of ['pointerup', 'touchend', 'click']) {
   }, { passive: true });
 }
 
-/** Arrow keys held for steering. */
-const heldArrows = new Set();
+/** Arrow keys held for steering, in the order they were pressed. */
+const heldKeys = new Set();
 
 function isFormControl(target) {
   return target instanceof Element && !!target.closest('button, input, select, textarea');
+}
+
+/** Steers toward the most recently pressed arrow that's still held (or straight if none). */
+function steerFromKeys() {
+  const keys = [...heldKeys];
+  const last = keys[keys.length - 1];
+  model.steer(last === undefined ? 0 : last === 'ArrowLeft' || last === 'ArrowUp' ? -1 : 1);
 }
 
 window.addEventListener('keydown', (e) => {
@@ -665,11 +877,30 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (confirmsReset) return; // The alert only answers its own buttons (and Escape).
+  const inField = e.target instanceof Element && e.target.matches('input, select, textarea');
 
-  if (key === ' ' || key === 'Spacebar' || key === 'ArrowUp' || key === 'Enter') {
+  // ↑ / ↓ glide up and down in Glide; otherwise ↑ plays or flaps like Space.
+  if (key === 'ArrowUp' || key === 'ArrowDown') {
+    if (inField) return;
+    if (hud.controlMode === 'glide' && activeScreen === 'game' && !showsSettings && !showsScoreboard) {
+      e.preventDefault();
+      if (e.repeat) return;
+      heldKeys.delete(key);
+      heldKeys.add(key);
+      steerFromKeys();
+      return;
+    }
+    if (key !== 'ArrowUp' || showsSettings || showsScoreboard) return;
+    e.preventDefault();
+    if (e.repeat) return;
+    if (activeScreen === 'menu') startGame();
+    else model.flap();
+    return;
+  }
+
+  if (key === ' ' || key === 'Spacebar' || key === 'Enter') {
     // A focused control (reached with Tab) gets its own Space/Enter.
-    if ((key === ' ' || key === 'Enter') && isFormControl(e.target)) return;
-    if (key === 'ArrowUp' && e.target instanceof Element && e.target.matches('input[type=range]')) return;
+    if (isFormControl(e.target)) return;
     e.preventDefault();
     if (e.repeat) return;
     if (showsSettings) closeSettings();
@@ -679,36 +910,37 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  // ← / → cycle the pilot's colors on the menu, and steer while held in portrait play.
   if (key === 'ArrowLeft' || key === 'ArrowRight') {
-    if (e.target instanceof Element && e.target.matches('input, select, textarea')) return;
-    const direction = key === 'ArrowLeft' ? -1 : 1;
+    if (inField) return;
     if (activeScreen === 'menu') {
       if (showsSettings || showsScoreboard) return;
       e.preventDefault();
-      cycleSkin(direction);
+      cycleSkin(key === 'ArrowLeft' ? -1 : 1);
       return;
     }
-    if (!hud.isSteering) return;
+    if (!hud.isPortrait) return;
     e.preventDefault();
-    heldArrows.add(direction);
-    model.steer(direction);
+    if (e.repeat) return;
+    heldKeys.delete(key);
+    heldKeys.add(key);
+    steerFromKeys();
   }
 });
 
 window.addEventListener('keyup', (e) => {
-  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-  const direction = e.key === 'ArrowLeft' ? -1 : 1;
-  if (!heldArrows.delete(direction)) return;
+  if (!heldKeys.delete(e.key)) return;
   if (activeScreen !== 'game' || !hud.isSteering) return;
-  // If the other arrow is still held, keep steering that way.
-  model.steer(heldArrows.size > 0 ? [...heldArrows][heldArrows.size - 1] : 0);
+  // If another arrow is still held, keep steering that way.
+  steerFromKeys();
 });
 
 window.addEventListener('blur', () => {
-  heldArrows.clear();
+  heldKeys.clear();
   heldPointers.clear();
   steeringPointer = null;
-  if (model.controlMode === 'steer') model.steer(0);
+  resetSwipe();
+  if (model.usesSteering) model.steer(0);
 });
 
 // Long presses shouldn't open menus or select anything mid-game.
@@ -745,9 +977,9 @@ function frame(nowMs) {
   const now = nowMs / 1000;
 
   // Portrait plays the same world rotated a quarter turn, so the pilot climbs
-  // upward and steers left/right.
+  // upward and steers left/right. Landscape flaps, or glides if chosen in Settings.
   const portrait = usesPortrait(Settings.modeLock, view.w, view.h);
-  model.setControlMode(portrait ? 'steer' : 'flap');
+  model.setControlMode(portrait ? 'steer' : Settings.landscapeStyle === 'glide' ? 'glide' : 'flap');
   model.difficultyLevel = Difficulty[Settings.difficulty];
   const worldW = portrait ? view.h : view.w;
   const worldH = portrait ? view.w : view.h;

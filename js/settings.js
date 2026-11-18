@@ -5,6 +5,8 @@
 
 const SettingsKeys = {
   modeLock: 'jetman.settings.modeLock',
+  landscapeStyle: 'jetman.settings.landscapeStyle',
+  steerControls: 'jetman.settings.steerControls',
   difficulty: 'jetman.settings.difficulty',
   haptics: 'jetman.settings.haptics',
   screenShake: 'jetman.settings.screenShake',
@@ -36,6 +38,24 @@ function usesPortrait(modeLockId, width, height) {
   }
 }
 
+/** How landscape plays. */
+const LandscapeStyle = {
+  /** Tap to flap against gravity (the original bounce). */
+  flap: { id: 'flap', name: 'Flap', detail: 'Tap to flap against gravity.' },
+  /** No gravity: hold the top or bottom half to move up or down at a constant speed, like portrait's steering. */
+  glide: { id: 'glide', name: 'Glide', detail: 'No gravity. Move up or down at a steady speed.' },
+};
+const LANDSCAPE_STYLE_IDS = ['flap', 'glide'];
+
+/** How touch steers in the steering modes (landscape glide and portrait). */
+const SteerControls = {
+  /** Press and hold one half of the screen to move toward it. */
+  hold: { id: 'hold', name: 'Hold', detail: 'Press and hold a side of the screen to move toward it.' },
+  /** Swipe toward where you want to go; slide back to reverse. */
+  swipe: { id: 'swipe', name: 'Swipe', detail: 'Swipe toward where you want to go. He moves while your finger moves.' },
+};
+const STEER_CONTROLS_IDS = ['hold', 'swipe'];
+
 /** Scales the game's pace and the open lane beside each block. */
 const Difficulty = {
   easy: {
@@ -53,6 +73,8 @@ const DIFFICULTY_IDS = ['easy', 'normal', 'hard'];
 /** Current settings, loaded from storage with the app's defaults. */
 const Settings = {
   modeLock: 'auto',
+  landscapeStyle: 'flap',
+  steerControls: 'swipe',
   difficulty: 'normal',
   haptics: true,
   screenShake: true,
@@ -63,6 +85,8 @@ const Settings = {
   load() {
     const pick = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
     this.modeLock = pick(Store.get(SettingsKeys.modeLock, 'auto'), MODE_LOCK_IDS, 'auto');
+    this.landscapeStyle = pick(Store.get(SettingsKeys.landscapeStyle, 'flap'), LANDSCAPE_STYLE_IDS, 'flap');
+    this.steerControls = pick(Store.get(SettingsKeys.steerControls, 'swipe'), STEER_CONTROLS_IDS, 'swipe');
     this.difficulty = pick(Store.get(SettingsKeys.difficulty, 'normal'), DIFFICULTY_IDS, 'normal');
     this.haptics = Store.get(SettingsKeys.haptics, true) !== false;
     this.screenShake = Store.get(SettingsKeys.screenShake, true) !== false;

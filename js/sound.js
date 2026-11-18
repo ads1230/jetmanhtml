@@ -64,7 +64,7 @@ class SoundEngine {
     if (this.context.state !== 'running') this.context.resume().catch(() => {});
   }
 
-  /** Plays 'flap', 'start', 'crash' or 'highScore'. */
+  /** Plays 'flap', 'start', 'crash', 'highScore', 'powerUp', 'shieldBreak' or 'laser'. */
   play(effect) {
     if (!this._enabled || this._volume <= 0) return;
     const context = this.context;
@@ -105,6 +105,9 @@ class SoundEngine {
       case 'flap': return 0.22;
       case 'start': return 0.25;
       case 'crash': return 0.8;
+      case 'powerUp': return 0.32;
+      case 'shieldBreak': return 0.45;
+      case 'laser': return 0.12;
       default: return 0.6; // highScore
     }
   }
@@ -151,6 +154,28 @@ class SoundEngine {
           value = burst + thump;
           break;
         }
+        case 'powerUp': {
+          // Two quick rising tones with a shimmer.
+          const first = t < 0.11;
+          const local = first ? t : t - 0.11;
+          const tone = sine(first ? 880 : 1318.5);
+          const envelope = Math.min(1, local / 0.004) * Math.exp(-local * 14);
+          value = (tone + 0.35 * Math.sin(6 * Math.PI * phase)) * envelope * 0.4;
+          break;
+        }
+        case 'shieldBreak': {
+          // Bright crackle over a falling electric buzz.
+          const crackle = filteredNoise(6000 - 4000 * progress) * Math.exp(-t * 9) * 0.9;
+          const buzz = (sine(520 - 380 * progress) > 0 ? 1 : -1) * Math.exp(-t * 7) * 0.25;
+          value = crackle + buzz;
+          break;
+        }
+        case 'laser': {
+          // Quick downward sweep, kept quiet since it repeats.
+          const envelope = Math.min(1, t / 0.003) * Math.exp(-t * 28);
+          value = sine(1700 - 1300 * progress) * envelope * 0.22;
+          break;
+        }
         default: {
           // C-E-G-C arpeggio, each note ringing out.
           const notes = [523.25, 659.25, 783.99, 1046.5];
@@ -168,6 +193,6 @@ class SoundEngine {
   }
 }
 
-SoundEngine.effects = ['flap', 'start', 'crash', 'highScore'];
+SoundEngine.effects = ['flap', 'start', 'crash', 'highScore', 'powerUp', 'shieldBreak', 'laser'];
 
 const sound = new SoundEngine();

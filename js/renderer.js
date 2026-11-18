@@ -49,11 +49,24 @@ class GameRenderer {
       const s = model.shake * model.shake * 10;
       ctx.translate(Math.sin(model.time * 91) * s, Math.cos(model.time * 73) * s);
     }
-    this.drawCave(ctx);
+    // Ghost Walls fades the cave walls, flickering back as a warning before it ends.
+    let wallVisibility = model.wallOpacity;
+    const ghostRemaining = model.powerUpTimers.get('ghostWalls');
+    if (ghostRemaining !== undefined && ghostRemaining < PowerUpTuning.ghostWallsWarning) {
+      wallVisibility = Math.trunc(model.time * 10) % 2 === 0 ? 0.7 : 0.15;
+    }
+    this.drawCave(ctx, wallVisibility);
     this.drawObstacles(ctx);
+    this.drawPickups(ctx);
+    this.drawBolts(ctx);
     if (this.showsPlayer) {
       this.drawParticles(ctx, true);
-      if (model.phase !== 'crashed') this.drawPlayer(ctx);
+      if (model.phase !== 'crashed') {
+        // Blink during the grace period after the shield absorbs a hit.
+        const blinking = model.invulnerableTimer > 0 && Math.trunc(model.time * 14) % 2 === 0;
+        if (!blinking) this.drawPlayer(ctx);
+        if (model.hasShield) this.drawShield(ctx);
+      }
     }
     this.drawParticles(ctx, false);
     ctx.restore();
@@ -272,7 +285,9 @@ class GameRenderer {
     ctx.lineTo(last[0], last[1] + offsetY);
   }
 
-  drawCave(ctx) {
+  /** The ceiling and floor; `visibility` fades them (Ghost Walls). */
+  drawCave(ctx, visibility = 1) {
+    if (!(visibility > 0.001)) return;
     const pad = 40;
     const unit = this._unit;
     for (const isTop of [true, false]) {
@@ -290,6 +305,8 @@ class GameRenderer {
       const rock = ctx.createLinearGradient(0, edgeY, 0, outerY);
       rock.addColorStop(0, css(ROCK_LIGHT));
       rock.addColorStop(1, css(ROCK_DARK));
+      ctx.save();
+      ctx.globalAlpha = visibility;
       ctx.fillStyle = rock;
       ctx.fill();
 
@@ -302,6 +319,7 @@ class GameRenderer {
         ctx.strokeStyle = css(NEON_VIOLET, opacity);
         ctx.stroke();
       }
+      ctx.restore();
 
       // Neon rim with additive glow.
       ctx.save();
@@ -315,13 +333,13 @@ class GameRenderer {
       ctx.lineJoin = 'round';
       ctx.beginPath();
       this.addSmoothPath(ctx, points, 0);
-      ctx.globalAlpha = 0.12;
+      ctx.globalAlpha = 0.12 * visibility;
       ctx.lineWidth = 14;
       ctx.stroke();
-      ctx.globalAlpha = 0.3;
+      ctx.globalAlpha = 0.3 * visibility;
       ctx.lineWidth = 5;
       ctx.stroke();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = visibility;
       ctx.lineWidth = 1.8;
       ctx.stroke();
       ctx.restore();
@@ -333,7 +351,8 @@ class GameRenderer {
   drawObstacles(ctx) {
     const unit = this._unit, m = this.model;
     const pulse = 0.85 + 0.15 * Math.sin(m.time * 4);
-    for (const o of m.obstacles) {
+    for (const obstacle of m.obstacles) {
+      const o = m.effectiveRect(obstacle);
       const x = this.screenX(o.x), y = this.screenY(o.y), w = o.w * unit, h = o.h * unit;
       if (!(x + w > -20 && x < this.w + 20)) continue;
       const radius = Math.min(w * 0.3, 10);
@@ -373,6 +392,112 @@ class GameRenderer {
       roundRectPath(ctx, x, y, w, h, radius);
       ctx.stroke();
     }
+  }
+
+  // MARK: Power-ups
+
+  /** Glowing orbs with an icon, bobbing gently in the cave. */
+  drawPickups(ctx) {
+    const m = this.model;
+    const r = PowerUpTuning.radius * this._unit;
+    m.pickups.forEach((pickup, index) => {
+      const bob = Math.sin(m.time * 3 + index) * r * 0.15;
+      const cx = this.screenX(pickup.x), cy = this.screenY(pickup.y) + bob;
+      if (!(cx > -r * 3 && cx < this.w + r * 3)) return;
+      const kind = PowerUpKind[pickup.kind];
+      const color = kind.color;
+      const pulse = 0.8 + 0.2 * Math.sin(m.time * 5 + index);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.2);
+      glow.addColorStop(0, css(color, 0.45 * pulse));
+      glow.addColorStop(1, CLEAR);
+      ctx.fillStyle = glow;
+      ellipsePath(ctx, cx - r * 2.2, cy - r * 2.2, r * 4.4, r * 4.4);
+      ctx.fill();
+      ctx.restore();
+
+      const orb = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 0, cx - r * 0.3, cy - r * 0.3, r * 1.3);
+      orb.addColorStop(0, css(color, 0.95));
+      orb.addColorStop(1, css(color, 0.35));
+      ctx.fillStyle = orb;
+      ellipsePath(ctx, cx - r, cy - r, r * 2, r * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(1, 1, 1, 0.8 * pulse);
+      ctx.lineWidth = Math.max(1, r * 0.1);
+      ctx.stroke();
+      ctx.restore();
+
+      // Icon, kept upright on screen in portrait (where the world is rotated).
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (m.controlMode === 'steer') ctx.rotate(Math.PI / 2);
+      if (kind.icon) {
+        drawPowerUpIcon(ctx, kind.icon, r * 1.1, '#fff');
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.font = `900 ${r * 0.95}px ${GameRenderer.roundedFont}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('×2', 0, r * 0.04);
+      }
+      ctx.restore();
+    });
+  }
+
+  /** Ray Gun bolts: short glowing streaks flying forward. */
+  drawBolts(ctx) {
+    const m = this.model;
+    if (m.bolts.length === 0) return;
+    const unit = this._unit;
+    const color = PowerUpKind.rayGun.color;
+    const length = 0.07 * unit;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    const strokes = [[css(color, 0.35), Math.max(6, unit * 0.022)], [css(color), Math.max(3, unit * 0.01)],
+      ['#fff', Math.max(1, unit * 0.004)]];
+    for (const bolt of m.bolts) {
+      const hx = this.screenX(bolt.x), hy = this.screenY(bolt.y);
+      for (const [style, width] of strokes) {
+        ctx.beginPath();
+        ctx.moveTo(hx - length, hy);
+        ctx.lineTo(hx, hy);
+        ctx.strokeStyle = style;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** A glowing bubble around the pilot while the shield is up. */
+  drawShield(ctx) {
+    const m = this.model;
+    const u = GameModel.spriteUnit * this._unit;
+    const radius = (m.controlMode === 'steer' ? 32 : 25) * u;
+    const cx = this.screenX(m.playerWorldX), cy = this.screenY(m.playerY);
+    const pulse = 0.75 + 0.25 * Math.sin(m.time * 6);
+    const color = PowerUpKind.shield.color;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    fill.addColorStop(0, CLEAR);
+    fill.addColorStop(0.5, css(color, 0.08));
+    fill.addColorStop(1, css(color, 0.3 * pulse));
+    ctx.fillStyle = fill;
+    ellipsePath(ctx, cx - radius, cy - radius, radius * 2, radius * 2);
+    ctx.fill();
+    ctx.strokeStyle = css(color, 0.9 * pulse);
+    ctx.lineWidth = Math.max(1.5, radius * 0.06);
+    ctx.stroke();
+    ctx.strokeStyle = css(color, 0.25);
+    ctx.lineWidth = Math.max(4, radius * 0.2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // MARK: Particles
@@ -512,6 +637,9 @@ class GameRenderer {
     ctx.fillRect(0, 0, this.w, this.h);
   }
 }
+
+/** SwiftUI's rounded system font, for the "×2" pickup label. */
+GameRenderer.roundedFont = 'ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
 /** Crystal shards: (angle, length scale). */
 GameRenderer.shards = [[-0.45, 0.7], [0.0, 1.0], [0.4, 0.8]];
