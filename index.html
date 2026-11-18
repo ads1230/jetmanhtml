@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#070a1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jetman">
+  <meta name="description" content="Jetman: fire the jetpack and fly through a winding neon cave.">
+  <title>Jetman</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game-canvas" aria-label="Jetman cave"></canvas>
+
+    <!-- In-game overlays: score bar, Get Ready and Game Over cards. -->
+    <div id="game-screen" class="screen">
+      <div id="score-bar" class="score-bar is-hidden">
+        <div class="glass capsule score-pill"><span class="label-icon" data-icon="flame"></span><span id="score-value">0</span></div>
+        <div class="glass capsule best-pill"><span class="label-icon" data-icon="crown"></span><span id="best-value">0</span></div>
+      </div>
+
+      <div id="ready-card" class="ready-card">
+        <div class="spacer"></div>
+        <div id="ready-title" class="ready-title"></div>
+        <p id="how-to" class="how-to"></p>
+        <div class="spacer pilot-gap"></div>
+        <div id="prompt" class="glass capsule prompt"></div>
+        <div class="spacer"></div>
+      </div>
+
+      <div id="game-over" class="game-over is-hidden">
+        <div class="glass game-over-card">
+          <div id="game-over-title" class="game-over-title"></div>
+          <div id="final-score" class="final-score">0</div>
+          <div id="rank-line" class="rank-line"><span class="label-icon" data-icon="trophy"></span><span id="rank-text"></span></div>
+          <div id="best-line" class="best-line"><span id="best-icon" class="label-icon" data-icon="crown"></span><span id="best-text"></span></div>
+          <div class="card-buttons">
+            <button id="menu-button" class="glass-button large" type="button"><span class="label-icon" data-icon="house"></span>Menu</button>
+            <button id="again-button" class="glass-button large prominent" type="button"><span class="label-icon" data-icon="arrowClockwise"></span>Play Again</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/skins.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/pilot2d.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/logo.js"></script>
+  <script src="js/icons.js"></script>
+  <script src="js/scoreboard.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
