@@ -109,16 +109,29 @@
           <div id="mode-detail" class="setting-detail"></div>
         </div>
 
-        <div id="landscape-row" class="setting-row">
-          <div class="setting-title" id="landscape-title">Landscape controls</div>
-          <div id="landscape-picker" class="segmented" role="radiogroup" aria-labelledby="landscape-title"></div>
-          <div id="landscape-detail" class="setting-detail"></div>
+        <!-- Rows that only apply to some game modes slide in and out as the mode settings change. -->
+        <div id="landscape-row" class="setting-row collapsible">
+          <div class="collapsible-body">
+            <div class="setting-title" id="landscape-title">Landscape controls</div>
+            <div id="landscape-picker" class="segmented" role="radiogroup" aria-labelledby="landscape-title"></div>
+            <div id="landscape-detail" class="setting-detail"></div>
+          </div>
         </div>
 
-        <div id="steering-row" class="setting-row">
-          <div class="setting-title" id="steering-title">Steering controls</div>
-          <div id="steering-picker" class="segmented" role="radiogroup" aria-labelledby="steering-title"></div>
-          <div id="steering-detail" class="setting-detail"></div>
+        <div id="glide-row" class="setting-row collapsible">
+          <div class="collapsible-body">
+            <div class="setting-title" id="glide-title">Glide controls</div>
+            <div id="glide-picker" class="segmented" role="radiogroup" aria-labelledby="glide-title"></div>
+            <div id="glide-detail" class="setting-detail"></div>
+          </div>
+        </div>
+
+        <div id="portrait-row" class="setting-row collapsible">
+          <div class="collapsible-body">
+            <div class="setting-title" id="portrait-title">Portrait controls</div>
+            <div id="portrait-picker" class="segmented" role="radiogroup" aria-labelledby="portrait-title"></div>
+            <div id="portrait-detail" class="setting-detail"></div>
+          </div>
         </div>
 
         <div class="setting-row">

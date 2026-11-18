@@ -1154,17 +1154,39 @@ button:focus-visible {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Setting rows that don't apply to the current game mode. */
-.setting-row.inactive {
-  opacity: 0.45;
+/* Setting rows that only apply to some game modes: they slide in from the
+   top and fade, and collapse (taking their gap with them) when hidden. */
+.setting-row.collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  gap: 0;
+  transition: grid-template-rows 0.32s var(--snappy), opacity 0.25s ease, margin-top 0.32s var(--snappy),
+    transform 0.32s var(--snappy), visibility 0s linear 0s;
 }
 
-.setting-row.inactive .segment {
-  pointer-events: none;
+.collapsible-body {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Room for keyboard focus rings inside the clipped body. */
+  padding: 3px;
+  margin: -3px;
 }
 
-.setting-row[hidden] {
-  display: none;
+.setting-row.collapsible.collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: -18px;
+  transform: translateY(-10px);
+  visibility: hidden;
+  transition: grid-template-rows 0.32s var(--snappy), opacity 0.2s ease, margin-top 0.32s var(--snappy),
+    transform 0.32s var(--snappy), visibility 0s linear 0.32s;
+}
+
+.settings.instant .setting-row.collapsible {
+  transition: none;
 }
 
 /* Touch steering hint on Get Ready (reaches the screen edges, under the home indicator). */

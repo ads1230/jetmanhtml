@@ -275,14 +275,18 @@ function usesTouchWording() {
   return matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
 
-function promptText(mode) {
-  if (!usesTouchWording()) {
-    return { steer: 'Hold ← or → to fly', glide: 'Hold ↑ or ↓ to fly', flap: 'Click or press Space to fly' }[mode];
-  }
-  const swipe = Settings.steerControls === 'swipe';
-  if (mode === 'steer') return swipe ? 'Swipe left or right to fly' : 'Hold left or right to fly';
-  if (mode === 'glide') return swipe ? 'Swipe up or down to fly' : 'Hold the top or bottom to fly';
-  return 'Tap to fly';
+/** Hold or swipe for the steering mode being played (portrait and Glide each have their own setting). */
+function steerControls() {
+  return hud.isPortrait ? Settings.portraitControls : Settings.glideControls;
+}
+
+/**
+ * The pulsing call to action on the Get Ready screen. The controls are
+ * explained by the text under the title (and the touch demo), so this just
+ * says how to begin.
+ */
+function promptText() {
+  return usesTouchWording() ? 'Tap to start' : 'Click or press Space to start';
 }
 
 function howToPlayText(mode) {
@@ -294,14 +298,14 @@ function howToPlayText(mode) {
       flap: 'Click or press Space to fire the jetpack.',
     }[mode] + dodge;
   }
-  const swipe = Settings.steerControls === 'swipe';
+  const swipe = steerControls() === 'swipe';
   if (mode === 'steer') return (swipe ? 'Swipe left or right to steer as you climb.' : 'Hold left or right to steer as you climb.') + dodge;
   if (mode === 'glide') return (swipe ? 'Swipe up or down to glide.' : 'Hold the top or bottom of the screen to glide.') + dodge;
   return 'Tap to fire the jetpack.' + dodge;
 }
 
 function updateReadyText() {
-  $('prompt').textContent = promptText(hud.controlMode);
+  $('prompt').textContent = promptText();
   $('how-to').textContent = howToPlayText(hud.controlMode);
   // In portrait the pilot sits low on screen; keep the prompt above him.
   $('ready-card').style.setProperty('--ready-bottom', hud.isPortrait ? `${Math.round(view.h * 0.38)}px` : '40px');
@@ -426,7 +430,7 @@ function renderControlsDemo() {
   demoCtx.setTransform(1, 0, 0, 1, 0, 0);
   demoCtx.clearRect(0, 0, pw, ph);
   demoCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  ControlsDemo.draw(demoCtx, view.w, view.h, Date.now() / 1000, !hud.isPortrait, Settings.steerControls);
+  ControlsDemo.draw(demoCtx, view.w, view.h, Date.now() / 1000, !hud.isPortrait, steerControls());
 }
 
 // MARK: Navigation
@@ -620,17 +624,25 @@ const updateLandscapePicker = segmented($('landscape-picker'), LANDSCAPE_STYLE_I
     updateSettingsPanel();
   });
 
-const updateSteeringPicker = segmented($('steering-picker'), STEER_CONTROLS_IDS,
-  STEER_CONTROLS_IDS.map((id) => SteerControls[id].name), () => Settings.steerControls, (id) => {
-    Settings.set('steerControls', id);
+const updateGlidePicker = segmented($('glide-picker'), STEER_CONTROLS_IDS,
+  STEER_CONTROLS_IDS.map((id) => SteerControls[id].name), () => Settings.glideControls, (id) => {
+    Settings.set('glideControls', id);
     updateSettingsPanel();
     updateReadyText();
   });
 
-/** Dims a setting that doesn't apply to the current game mode, and stops it being changed. */
-function setRowActive(row, active) {
-  row.classList.toggle('inactive', !active);
-  for (const button of row.querySelectorAll('.segment')) button.disabled = !active;
+const updatePortraitPicker = segmented($('portrait-picker'), STEER_CONTROLS_IDS,
+  STEER_CONTROLS_IDS.map((id) => SteerControls[id].name), () => Settings.portraitControls, (id) => {
+    Settings.set('portraitControls', id);
+    updateSettingsPanel();
+    updateReadyText();
+  });
+
+/** Shows or hides a setting that only applies to some game modes (it slides in and out). */
+function setRowShown(row, shown) {
+  if (!shown && row.contains(document.activeElement)) $('settings').focus({ preventScroll: true });
+  row.classList.toggle('collapsed', !shown);
+  row.setAttribute('aria-hidden', String(!shown));
 }
 
 /** Touch steering only matters on touch screens (the app hides it on the Mac). */
@@ -647,16 +659,20 @@ const updateDifficultyPicker = segmented($('difficulty-picker'), DIFFICULTY_IDS,
 function updateSettingsPanel() {
   updateModePicker();
   updateLandscapePicker();
-  updateSteeringPicker();
+  updateGlidePicker();
+  updatePortraitPicker();
   updateDifficultyPicker();
   $('mode-detail').textContent = ModeLock[Settings.modeLock].detail;
   $('landscape-detail').textContent = LandscapeStyle[Settings.landscapeStyle].detail;
-  $('steering-detail').textContent = SteerControls[Settings.steerControls].detail;
-  // Landscape controls only matter when the game can play landscape; steering
-  // controls only when a steering mode (portrait, or landscape glide) can come up.
-  setRowActive($('landscape-row'), Settings.modeLock !== 'portrait');
-  $('steering-row').hidden = !hasTouch();
-  setRowActive($('steering-row'), Settings.modeLock !== 'landscape' || Settings.landscapeStyle === 'glide');
+  $('glide-detail').textContent = controlsDetail(Settings.glideControls, 'up or down');
+  $('portrait-detail').textContent = controlsDetail(Settings.portraitControls, 'left or right');
+  // Rows that don't apply are hidden: Landscape controls when the game can't
+  // play landscape, Glide controls unless Glide can come up, Portrait controls
+  // when the game can't play portrait. The touch controls only show on touch
+  // screens (the app leaves them out on the Mac).
+  setRowShown($('landscape-row'), Settings.modeLock !== 'portrait');
+  setRowShown($('glide-row'), hasTouch() && Settings.modeLock !== 'portrait' && Settings.landscapeStyle === 'glide');
+  setRowShown($('portrait-row'), hasTouch() && Settings.modeLock !== 'landscape');
   $('difficulty-detail').textContent = Difficulty[Settings.difficulty].detail;
   $('sound-toggle').checked = Settings.soundEnabled;
   const slider = $('volume-slider');
@@ -695,7 +711,12 @@ function applySoundSettings() {
 
 function openSettings() {
   showsSettings = true;
+  // Rows start in place when the panel opens; they only slide while it's open.
+  const panel = $('settings');
+  panel.classList.add('instant');
   updateSettingsPanel();
+  void panel.offsetWidth;
+  panel.classList.remove('instant');
   setShown($('settings-panel'), true);
   $('settings').scrollTop = 0;
   $('settings').focus({ preventScroll: true });
@@ -782,7 +803,7 @@ function steeringDirection(p) {
   const start = hud.isPortrait ? p.startX : p.startY;
   const extent = hud.isPortrait ? view.w : view.h;
 
-  if (Settings.steerControls === 'hold') return position < extent / 2 ? -1 : 1;
+  if (steerControls() === 'hold') return position < extent / 2 ? -1 : 1;
   if (!swipe.active) {
     // Not swiping yet: wait for the finger to slide.
     if (Math.abs(position - start) < SWIPE_THRESHOLD) return 0;
@@ -808,7 +829,7 @@ function steeringDirection(p) {
 
 /** Steers from a held pointer. Swipes only steer while the finger is moving: each movement keeps him going briefly, then he levels out. */
 function steerWith(p) {
-  const swiping = Settings.steerControls === 'swipe';
+  const swiping = steerControls() === 'swipe';
   model.steer(steeringDirection(p), swiping ? SWIPE_HOLD_TIME : null, swiping ? SWIPE_SPEED_SCALE : 1);
 }
 
@@ -833,7 +854,7 @@ appEl.addEventListener('pointerdown', (e) => {
     resetSwipe();
     // Swipe controls don't move on a plain press, so a touch on its own starts
     // (or restarts) the run.
-    if (Settings.steerControls === 'swipe' && !wasPressed) model.flap();
+    if (steerControls() === 'swipe' && !wasPressed) model.flap();
     steerWith(p);
   } else {
     model.flap();
@@ -861,7 +882,7 @@ function releasePointer(e) {
     p.startX = p.x;
     p.startY = p.y;
     if (hud.isSteering) {
-      if (Settings.steerControls === 'hold') steerWith(p);
+      if (steerControls() === 'hold') steerWith(p);
       else model.steer(0);
     }
   } else {

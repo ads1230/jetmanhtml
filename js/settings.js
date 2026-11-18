@@ -6,7 +6,10 @@
 const SettingsKeys = {
   modeLock: 'jetman.settings.modeLock',
   landscapeStyle: 'jetman.settings.landscapeStyle',
-  steerControls: 'jetman.settings.steerControls',
+  /** Hold/swipe for landscape glide (kept on the original key so an existing choice carries over). */
+  glideControls: 'jetman.settings.steerControls',
+  /** Hold/swipe for portrait. */
+  portraitControls: 'jetman.settings.portraitControls',
   difficulty: 'jetman.settings.difficulty',
   haptics: 'jetman.settings.haptics',
   screenShake: 'jetman.settings.screenShake',
@@ -47,14 +50,21 @@ const LandscapeStyle = {
 };
 const LANDSCAPE_STYLE_IDS = ['flap', 'glide'];
 
-/** How touch steers in the steering modes (landscape glide and portrait). */
+/** How touch steers in a steering mode (landscape glide or portrait); each mode has its own setting. */
 const SteerControls = {
   /** Press and hold one half of the screen to move toward it. */
-  hold: { id: 'hold', name: 'Hold', detail: 'Press and hold a side of the screen to move toward it.' },
+  hold: { id: 'hold', name: 'Hold' },
   /** Swipe toward where you want to go; slide back to reverse. */
-  swipe: { id: 'swipe', name: 'Swipe', detail: 'Swipe toward where you want to go. He moves while your finger moves.' },
+  swipe: { id: 'swipe', name: 'Swipe' },
 };
 const STEER_CONTROLS_IDS = ['hold', 'swipe'];
+
+/** Settings text for a steering mode's controls; `axis` is "up or down" (Glide) or "left or right" (portrait). */
+function controlsDetail(controls, axis) {
+  return controls === 'hold'
+    ? `Press and hold a side of the screen to move ${axis}.`
+    : `Swipe ${axis}. He moves while your finger moves.`;
+}
 
 /** Scales the game's pace and the open lane beside each block. */
 const Difficulty = {
@@ -74,7 +84,8 @@ const DIFFICULTY_IDS = ['easy', 'normal', 'hard'];
 const Settings = {
   modeLock: 'auto',
   landscapeStyle: 'flap',
-  steerControls: 'swipe',
+  glideControls: 'swipe',
+  portraitControls: 'hold',
   difficulty: 'normal',
   haptics: true,
   screenShake: true,
@@ -86,7 +97,8 @@ const Settings = {
     const pick = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
     this.modeLock = pick(Store.get(SettingsKeys.modeLock, 'auto'), MODE_LOCK_IDS, 'auto');
     this.landscapeStyle = pick(Store.get(SettingsKeys.landscapeStyle, 'flap'), LANDSCAPE_STYLE_IDS, 'flap');
-    this.steerControls = pick(Store.get(SettingsKeys.steerControls, 'swipe'), STEER_CONTROLS_IDS, 'swipe');
+    this.glideControls = pick(Store.get(SettingsKeys.glideControls, 'swipe'), STEER_CONTROLS_IDS, 'swipe');
+    this.portraitControls = pick(Store.get(SettingsKeys.portraitControls, 'hold'), STEER_CONTROLS_IDS, 'hold');
     this.difficulty = pick(Store.get(SettingsKeys.difficulty, 'normal'), DIFFICULTY_IDS, 'normal');
     this.haptics = Store.get(SettingsKeys.haptics, true) !== false;
     this.screenShake = Store.get(SettingsKeys.screenShake, true) !== false;

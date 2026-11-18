@@ -9,7 +9,7 @@ Open `index.html` in a browser. It works straight from disk (`file://`) or from 
 - **Landscape (Flap):** click, tap or press Space (or ↑ / Enter) to fire the jetpack and flap through the cave, Flappy Bird style.
 - **Landscape (Glide):** no gravity. Move up or down at a steady speed with ↑ / ↓, by holding the top or bottom half of the screen, or by swiping.
 - **Portrait:** the same cave turned a quarter turn. The pilot climbs on his own; steer with ← / →, by holding the left or right half of the screen, or by swiping.
-- **Swipe steering** (the default on touch screens): swipe toward where you want to go and he moves while your finger moves; slide back to reverse. **Hold** steering moves toward whichever half of the screen you're pressing. On touch screens, the Get Ready screen in Glide and portrait shows an animated hint for the chosen controls: a sliding finger for Swipe, or the two screen halves lighting up in turn for Hold.
+- **Touch steering:** with **Hold**, he moves toward whichever half of the screen you're pressing. With **Swipe**, he moves the way you swipe, while your finger moves, and sliding back reverses him. Portrait and Glide each have their own choice: portrait starts on Hold and Glide on Swipe. The Get Ready capsule just says "Tap to start". On touch screens, the Get Ready screen in Glide and portrait shows an animated hint for the chosen controls: a sliding finger for Swipe, or the two screen halves lighting up in turn for Hold.
 - **Menu:** pick one of seven pilots (Navy, Stealth, Pink, Mecha, Vanguard, Joker, Hero) with the swatches or ← / →, then Play. The trophy opens the local top-5 board and the gear opens Settings.
 - **Esc** closes panels and returns to the menu between runs.
 
@@ -29,8 +29,8 @@ One power-up floats in the gap after a block every 10 to 15 blocks, and only one
 The settings match the app:
 
 - Game mode: Auto, Landscape or Portrait.
-- Landscape controls: Flap or Glide.
-- Steering controls: Hold or Swipe. This only shows on touch screens, just as the app hides it on the Mac.
+- Landscape controls: Flap or Glide. Hidden when the game is locked to portrait.
+- Glide controls and Portrait controls: Hold or Swipe for each steering mode. Each row only shows when its mode can come up, and only on touch screens, just as the app leaves them out on the Mac. Rows slide in and out as you change the game mode.
 - Difficulty: Easy, Normal or Hard.
 - Sound effects and volume.
 - Haptics, only shown where the browser can vibrate, like Android Chrome.
