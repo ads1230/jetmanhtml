@@ -18,8 +18,33 @@
   <div id="app">
     <canvas id="game-canvas" aria-label="Jetman cave"></canvas>
 
+    <!-- Main menu: logo, pilot turntable, skin picker and Play; scoreboard and settings icons along the bottom. -->
+    <div id="menu-screen" class="screen">
+      <div id="menu-area" class="menu-area">
+        <div id="menu-content" class="menu-content layout-1">
+          <div class="menu-group group-pilot">
+            <div id="turntable" class="turntable"><canvas id="turntable-canvas" role="img" aria-label="Jetman pilot"></canvas></div>
+            <div class="skin-picker">
+              <div id="swatches" class="swatches" role="radiogroup" aria-label="Pilot"></div>
+              <div id="skin-name" class="skin-name" aria-hidden="true">NAVY</div>
+            </div>
+          </div>
+          <div class="menu-group group-title">
+            <div id="logo" class="logo"></div>
+            <div class="menu-controls">
+              <button id="play-button" class="glass-button prominent play-button" type="button"><span class="label-icon" data-icon="play"></span>Play</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="menu-icon-bar">
+        <button id="scoreboard-button" class="glass-button icon-button large" type="button" aria-label="Scoreboard" title="Scoreboard"><span data-icon="trophy"></span></button>
+        <button id="settings-button" class="glass-button icon-button large" type="button" aria-label="Settings" title="Settings"><span data-icon="gear"></span></button>
+      </div>
+    </div>
+
     <!-- In-game overlays: score bar, Get Ready and Game Over cards. -->
-    <div id="game-screen" class="screen">
+    <div id="game-screen" class="screen is-hidden">
       <div id="score-bar" class="score-bar is-hidden">
         <div class="glass capsule score-pill"><span class="label-icon" data-icon="flame"></span><span id="score-value">0</span></div>
         <div class="glass capsule best-pill"><span class="label-icon" data-icon="crown"></span><span id="best-value">0</span></div>
@@ -44,6 +69,69 @@
             <button id="menu-button" class="glass-button large" type="button"><span class="label-icon" data-icon="house"></span>Menu</button>
             <button id="again-button" class="glass-button large prominent" type="button"><span class="label-icon" data-icon="arrowClockwise"></span>Play Again</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arcade-style HIGH SCORES board over a dark LED dot-matrix screen. -->
+    <div id="scoreboard-panel" class="overlay is-hidden" role="dialog" aria-modal="true" aria-label="High scores">
+      <div class="dim" data-close></div>
+      <div id="scoreboard" class="panel scoreboard" tabindex="-1">
+        <div class="scoreboard-content">
+          <div class="close-row">
+            <button class="glass-button icon-button close-button" type="button" data-close aria-label="Close"><span data-icon="xmark"></span></button>
+          </div>
+          <div id="scoreboard-title" class="scoreboard-title"></div>
+          <div id="scoreboard-body" class="scoreboard-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings: mode lock, difficulty, sound, haptics, screen shake, reset. -->
+    <div id="settings-panel" class="overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
+      <div class="dim" data-close></div>
+      <div id="settings" class="panel glass settings" tabindex="-1">
+        <div class="settings-header">
+          <h2 id="settings-heading" class="settings-heading"><span class="label-icon" data-icon="gear"></span>Settings</h2>
+          <button class="glass-button icon-button close-button" type="button" data-close aria-label="Close"><span data-icon="xmark"></span></button>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-title" id="mode-title">Game mode</div>
+          <div id="mode-picker" class="segmented" role="radiogroup" aria-labelledby="mode-title"></div>
+          <div id="mode-detail" class="setting-detail"></div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-title" id="difficulty-title">Difficulty</div>
+          <div id="difficulty-picker" class="segmented" role="radiogroup" aria-labelledby="difficulty-title"></div>
+          <div id="difficulty-detail" class="setting-detail"></div>
+        </div>
+
+        <div class="toggles">
+          <label class="toggle-row"><span>Sound effects</span><input id="sound-toggle" class="switch" type="checkbox" role="switch"></label>
+          <div id="volume-row" class="volume-row">
+            <span class="volume-icon" data-icon="speaker"></span>
+            <input id="volume-slider" class="slider" type="range" min="0" max="1" step="0.01" aria-label="Volume">
+            <span class="volume-icon" data-icon="speakerWave"></span>
+          </div>
+          <label id="haptics-row" class="toggle-row" hidden><span>Haptics</span><input id="haptics-toggle" class="switch" type="checkbox" role="switch"></label>
+          <label class="toggle-row"><span>Screen shake</span><input id="shake-toggle" class="switch" type="checkbox" role="switch"></label>
+        </div>
+
+        <button id="reset-button" class="glass-button destructive wide-button" type="button"><span class="label-icon" data-icon="trash"></span>Reset Scores</button>
+      </div>
+    </div>
+
+    <!-- Confirmation for Reset Scores. -->
+    <div id="reset-alert" class="overlay alert-overlay is-hidden" role="alertdialog" aria-modal="true" aria-labelledby="alert-title" aria-describedby="alert-message">
+      <div class="dim"></div>
+      <div id="alert" class="alert glass" tabindex="-1">
+        <div id="alert-title" class="alert-title">Reset all data?</div>
+        <div id="alert-message" class="alert-message">This clears your local scoreboard and best score.</div>
+        <div class="alert-buttons">
+          <button id="alert-cancel" class="glass-button alert-button" type="button">Cancel</button>
+          <button id="alert-reset" class="glass-button alert-button destructive-fill" type="button">Reset</button>
         </div>
       </div>
     </div>

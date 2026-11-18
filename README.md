@@ -15,5 +15,5 @@ Open `index.html` in a browser. It also works from any static host, such as GitH
 Ported in stages:
 
 1. Gameplay: simulation, cave renderer, input, HUD, Get Ready and Game Over cards. **Done.**
-2. Menu, scoreboard and settings.
+2. Menu, scoreboard and settings. **Done.**
 3. 3D pilots and sounds.
