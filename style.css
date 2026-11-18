@@ -798,8 +798,8 @@ button:focus-visible {
 .settings {
   width: calc(100% - 48px);
   max-width: 420px;
-  max-height: calc(100% - 48px);
-  margin: 24px;
+  max-height: calc(100% - 24px);
+  margin: 12px 24px;
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -1196,4 +1196,24 @@ button:focus-visible {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* Compact settings for shorter screens: tighter spacing and no description
+   lines. If even this doesn't fit, the panel scrolls. */
+.settings.compact {
+  gap: 12px;
+  padding: 18px;
+}
+
+.settings.compact .setting-row,
+.settings.compact .collapsible-body {
+  gap: 4px;
+}
+
+.settings.compact .setting-detail {
+  display: none;
+}
+
+.settings.compact .setting-row.collapsible.collapsed {
+  margin-top: -12px;
 }

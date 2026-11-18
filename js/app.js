@@ -529,6 +529,12 @@ function renderScoreboard() {
   }
 }
 
+/** Height inside an overlay's safe-area padding, for fitting its panel. */
+function overlayRoom(overlay) {
+  const style = getComputedStyle(overlay);
+  return overlay.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+}
+
 /**
  * Full size when it fits; a compact layout on short screens; scrolling only
  * as a last resort. Every row shares one text size: if the widest row
@@ -536,7 +542,7 @@ function renderScoreboard() {
  */
 function fitScoreboard() {
   const panel = $('scoreboard');
-  const available = $('scoreboard-panel').clientHeight - 24;
+  const available = overlayRoom($('scoreboard-panel')) - 24;
   panel.classList.remove('compact');
   fitScoreRows(false);
   if (panel.scrollHeight > available + 0.5) {
@@ -673,6 +679,7 @@ function updateSettingsPanel() {
   setRowShown($('landscape-row'), Settings.modeLock !== 'portrait');
   setRowShown($('glide-row'), hasTouch() && Settings.modeLock !== 'portrait' && Settings.landscapeStyle === 'glide');
   setRowShown($('portrait-row'), hasTouch() && Settings.modeLock !== 'landscape');
+  if (showsSettings) fitSettings();
   $('difficulty-detail').textContent = Difficulty[Settings.difficulty].detail;
   $('sound-toggle').checked = Settings.soundEnabled;
   const slider = $('volume-slider');
@@ -707,6 +714,31 @@ function applySoundSettings() {
   if (typeof sound === 'undefined') return;
   sound.isEnabled = Settings.soundEnabled;
   sound.volume = Settings.soundVolume;
+}
+
+/**
+ * Full size when it fits; without the descriptions on shorter screens;
+ * scrolling only as a last resort (SwiftUI ViewThatFits). Each layout is
+ * measured on an invisible copy in its final state, so rows that are still
+ * sliding in or out don't throw the choice off.
+ */
+function fitSettings() {
+  const panel = $('settings');
+  const available = overlayRoom($('settings-panel')) - 24;
+  const heightFor = (compact) => {
+    const copy = panel.cloneNode(true);
+    for (const node of [copy, ...copy.querySelectorAll('[id]')]) node.removeAttribute('id');
+    copy.classList.add('instant');
+    copy.classList.toggle('compact', compact);
+    copy.setAttribute('aria-hidden', 'true');
+    copy.style.cssText = `position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;` +
+      `width:${panel.offsetWidth}px;max-height:none;margin:0;overflow:visible;transition:none;`;
+    panel.parentElement.appendChild(copy);
+    const height = copy.offsetHeight;
+    copy.remove();
+    return height;
+  };
+  panel.classList.toggle('compact', heightFor(false) > available + 0.5);
 }
 
 function openSettings() {
@@ -1014,6 +1046,7 @@ function resize() {
   if (hud.phase === 'ready') updateReadyText();
   if (activeScreen === 'menu') layoutMenu();
   if (showsScoreboard) fitScoreboard();
+  if (showsSettings) fitSettings();
 }
 
 new ResizeObserver(resize).observe(appEl);
