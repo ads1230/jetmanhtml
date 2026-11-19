@@ -611,6 +611,36 @@ const PilotRenderer3D = (() => {
     facePoints = new Float64Array(n * 6);
   }
 
+  /** How far each projected face is grown on every side, in canvas units. */
+  const seam = 0.3;
+
+  /**
+   * Grows the projected triangle at `facePoints[o...o + 5]` by `seam` on every
+   * side, so neighbouring faces overlap and no anti-aliasing seams show
+   * between them. This matches outlining each face with a 0.6-unit hairline
+   * of its own colour (miter joins, limit 10), at about a third of the drawing
+   * cost. Offsetting all three sides of a triangle equally scales it about its
+   * incenter.
+   */
+  function growFace(o) {
+    const x0 = facePoints[o], y0 = facePoints[o + 1];
+    const x1 = facePoints[o + 2], y1 = facePoints[o + 3];
+    const x2 = facePoints[o + 4], y2 = facePoints[o + 5];
+    const a = Math.hypot(x2 - x1, y2 - y1), b = Math.hypot(x0 - x2, y0 - y2), c = Math.hypot(x1 - x0, y1 - y0);
+    const perimeter = a + b + c;
+    const doubleArea = Math.abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
+    if (!(perimeter > 0 && doubleArea > 0)) return;
+    const growth = seam * perimeter / doubleArea; // seam / inradius
+    const ix = (a * x0 + b * x1 + c * x2) / perimeter, iy = (a * y0 + b * y1 + c * y2) / perimeter;
+    for (let k = 0; k < 6; k += 2) {
+      const dx = facePoints[o + k] - ix, dy = facePoints[o + k + 1] - iy;
+      // Sharp corners would spike out; cap each corner's move at 10x the seam, like a miter limit.
+      const g = Math.min(growth, (seam * 10) / Math.max(Math.hypot(dx, dy), 1e-9));
+      facePoints[o + k] += dx * g;
+      facePoints[o + k + 1] += dy * g;
+    }
+  }
+
   function colorString(key) {
     let s = colorStrings.get(key);
     if (!s) {
@@ -733,6 +763,7 @@ const PilotRenderer3D = (() => {
         facePoints[count * 6 + k * 2] = cx + (focal * (world[k * 3] - camX)) / -qz;
         facePoints[count * 6 + k * 2 + 1] = cy - (focal * (world[k * 3 + 1] - camY)) / -qz;
       }
+      growFace(count * 6);
       facePartDepth[count] = partDepths[mesh.part[t]];
       faceDepth[count] = gz;
       faceColor[count] = (R << 16) | (G << 8) | B;
@@ -745,19 +776,14 @@ const PilotRenderer3D = (() => {
     order.sort((a, b) => (facePartDepth[a] !== facePartDepth[b] ? facePartDepth[a] - facePartDepth[b] : faceDepth[a] - faceDepth[b]));
 
     // Consecutive faces of the same color are filled together (same result,
-    // far fewer draw calls). A hairline in the same color hides
-    // anti-aliasing seams between faces.
+    // far fewer draw calls). Each face was grown slightly (growFace), which
+    // hides anti-aliasing seams between faces.
     ctx.save();
-    ctx.lineWidth = 0.6;
-    ctx.lineJoin = 'miter';
     let current = -1;
     const flush = () => {
       if (current < 0) return;
-      const style = colorString(current);
-      ctx.fillStyle = style;
+      ctx.fillStyle = colorString(current);
       ctx.fill();
-      ctx.strokeStyle = style;
-      ctx.stroke();
     };
     for (let i = 0; i < count; i++) {
       const f = order[i];
@@ -880,6 +906,28 @@ const PilotSprite3D = (() => {
     return cached;
   }
 
+  /**
+   * The sprite resampled once to `pixelsPerUnit` canvas pixels per sprite
+   * unit (its on-screen size), so each frame only rotates it: a high-quality
+   * downscale every frame is costly, especially where canvases are drawn on
+   * the CPU. Remade when the size changes (resizes, render quality).
+   */
+  function sized(s, pixelsPerUnit) {
+    const ppu = Math.round(pixelsPerUnit * 256) / 256;
+    if (s.sized && s.sizedPPU === ppu) return s.sized;
+    if (s.sized) s.sized.width = s.sized.height = 0; // free it now (Safari holds canvas memory until a GC)
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(s.w * ppu));
+    canvas.height = Math.max(1, Math.round(s.h * ppu));
+    const c = canvas.getContext('2d');
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(s.canvas, 0, 0, canvas.width, canvas.height);
+    s.sized = canvas;
+    s.sizedPPU = ppu;
+    return canvas;
+  }
+
   /** Draws a cached sprite rotated by `rotation`, with flames on top. */
   function drawSprite(s, ctx, cx, cy, length, rotation, skin, flame) {
     const k = length / referenceHeight;
@@ -887,9 +935,10 @@ const PilotSprite3D = (() => {
     ctx.translate(cx, cy);
     ctx.rotate(rotation);
     ctx.scale(k, k);
+    const t = ctx.getTransform();
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(s.canvas, -s.w / 2, -s.h / 2, s.w, s.h);
+    ctx.imageSmoothingQuality = 'low';
+    ctx.drawImage(sized(s, Math.hypot(t.a, t.b)), -s.w / 2, -s.h / 2, s.w, s.h);
 
     // The hero flies without a jetpack. Otherwise the nozzles face out of the
     // body in both views, so the flames go on top.

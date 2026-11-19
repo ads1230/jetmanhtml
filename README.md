@@ -83,12 +83,23 @@ The settings match the app:
 - The speed ramp, Brake and levels do too: the notch timing and easing, steering that speeds up by half as much as the cave, the level thresholds, the smoothstep crossfade between looks and the run banners' wording, timing and sizes.
 - Sounds use the same synthesis (filtered noise, sine sweeps, the C-E-G-C arpeggio) and the same six-voice pool. Browsers only allow audio after the first tap, click or key press.
 
+### Performance
+
+Browsers that draw canvases on the CPU, Safari among them, pay for every pixel of every gradient each frame. So the web version draws the same picture more cheaply:
+
+- The back wall's gradient is drawn as 128 thin solid bands (neighbours differ by at most one colour level), and the vignette is a CSS layer over the canvas. Together they were about half the cost of a frame.
+- The panel lettering caches the parts that never change and redraws only the seam glow, blinking lights and shine.
+- Each in-game pilot sprite is resampled once to its on-screen size, so each frame only rotates it.
+- The 3D renderer grows each face by 0.3 units to hide seams between faces, instead of outlining every face with a hairline. That made the menu turntable about 2.5× cheaper to draw.
+- The game canvas draws at up to 2× the page's resolution. If more than one frame in ten runs slower than 40 fps, it steps down (as far as 0.75×) until frames keep up, separately for the menu and the game; on the menu the turntable first drops to 30 fps. On a 120 Hz display that keeps missing frames, drawing holds a steady 60 fps instead.
+
 ### Differences from the app
 
 - Game Center is not included: no sign-in, global leaderboards or score submission. Difficulty and reset text no longer mention it.
 - Liquid Glass is approximated with CSS `backdrop-filter`, and SF Symbols (including the power-up icons) with simple inline SVGs.
 - Haptics use `navigator.vibrate`, so they only work in browsers that support it (not iOS Safari).
 - On-screen prompts say "Tap…" on touch screens and "Click or press Space…" elsewhere, matching the app's iOS and macOS wording.
+- On slower devices the cave may be drawn below the screen's full resolution, and the menu turntable may turn at 30 fps (see Performance).
 
 ## Hosting on GitHub Pages
 

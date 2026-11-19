@@ -54,6 +54,16 @@ body {
   display: block;
 }
 
+/* The game's vignette (GameRenderer's last pass in the app): clear out to 55%
+   of the way to the corners, then darkening to 45% black. A CSS layer, so the
+   browser composites it rather than the canvas filling it every frame. */
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle farthest-corner at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
 canvas {
   display: block;
 }

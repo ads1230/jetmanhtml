@@ -307,7 +307,8 @@ let turntableStart = performance.now() / 1000;
 function renderTurntable(now) {
   const w = turntableCanvas.clientWidth, h = turntableCanvas.clientHeight;
   if (w === 0 || h === 0) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  // Same resolution as the game canvas (up to 2x, lower if frames run long).
+  const dpr = view.dpr;
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
   if (turntableCanvas.width !== pw || turntableCanvas.height !== ph) {
     turntableCanvas.width = pw;
@@ -523,6 +524,8 @@ function showScreen(name) {
   activeScreen = name;
   setShown($('menu-screen'), name === 'menu');
   setShown($('game-screen'), name === 'game');
+  sizeCanvas(); // each screen has its own resolution budget
+  settleFrames();
   if (name === 'menu') {
     // The menu is rebuilt each time it appears, so the turntable starts over facing front.
     if (!wasMenu) turntableStart = performance.now() / 1000;
@@ -1104,10 +1107,23 @@ appEl.addEventListener('contextmenu', (e) => e.preventDefault());
 // MARK: Layout
 
 function resize() {
+  sizeCanvas();
+  if (hud.phase === 'ready') updateReadyText();
+  if (activeScreen === 'menu') layoutMenu();
+  if (showsScoreboard) fitScoreboard();
+  if (showsSettings) fitSettings();
+}
+
+/** Matches the game canvas to the window, at the resolution the render quality allows. */
+function sizeCanvas() {
   const w = Math.max(1, appEl.clientWidth);
   const h = Math.max(1, appEl.clientHeight);
-  // Cap the backing store at 2x: the cave is mostly soft gradients and glows.
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = canvasScale(w, h);
+  if (w !== view.w || h !== view.h) {
+    // A new window size: stepping down may help again.
+    renderQuality.stepShare = {};
+    renderQuality.stalled = {};
+  }
   view.w = w;
   view.h = h;
   view.dpr = dpr;
@@ -1115,21 +1131,137 @@ function resize() {
   if (canvas.width !== pw || canvas.height !== ph) {
     canvas.width = pw;
     canvas.height = ph;
+    settleFrames();
   }
-  if (hud.phase === 'ready') updateReadyText();
-  if (activeScreen === 'menu') layoutMenu();
-  if (showsScoreboard) fitScoreboard();
-  if (showsSettings) fitSettings();
 }
 
 new ResizeObserver(resize).observe(appEl);
 window.addEventListener('resize', resize);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
+document.addEventListener('visibilitychange', () => settleFrames(1000));
+
+// MARK: Render quality
+
+/**
+ * The game canvas (and the menu turntable, which follows it) draws at up to
+ * 2x the page's CSS pixels. If frames keep running long, as where the browser
+ * draws canvases on the CPU (Safari) or on a slower device, a budget of canvas
+ * pixels is set below the current size: the resolution steps down until
+ * frames keep up, and stays within that budget if the window is resized. The
+ * menu and the game screen each keep their own budget, and on the menu the
+ * turntable first drops to 30 fps. The glows and gradients look much the
+ * same, and the HUD and menus are HTML, so they stay sharp. On a 120 Hz
+ * display that keeps missing frames, drawing is held to a steady 60 fps,
+ * which looks smoother than an uneven 80-120.
+ */
+const renderQuality = {
+  /** Canvas pixels the device keeps up with on each screen: unlimited until frames run long. */
+  budgets: { menu: Infinity, game: Infinity },
+  /** The menu turntable turns at 30 fps. */
+  slowTurntable: false,
+  /** Never fewer than this many canvas pixels per CSS pixel. */
+  minScale: 0.75,
+  /** Draw at most 60 frames a second. */
+  cap60: false,
+  /** Intervals between drawn frames (ms) since the last check, and when that window began. */
+  intervals: [],
+  windowStart: 0,
+  lastDrawn: null,
+  /** Consecutive checks with too many slow frames. */
+  slowChecks: 0,
+  /** Per screen: share of slow frames when the resolution last stepped down... */
+  stepShare: {},
+  /** ...and whether stepping down stopped helping (something else is holding frames back). */
+  stalled: {},
+  /** Frame times are ignored until then (ms): starting up, resizes and screen changes cause one-off stalls. */
+  settleUntil: performance.now() + 2500,
+  /** Frames drawn, for drawing the turntable every other frame. */
+  drawn: 0,
+};
+
+/** The full canvas resolution: the screen's pixel ratio, up to 2x. */
+function fullScale() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+/** Canvas pixels per CSS pixel for a w x h game canvas, within the current screen's pixel budget. */
+function canvasScale(w, h) {
+  const budgeted = Math.sqrt(renderQuality.budgets[activeScreen] / Math.max(1, w * h));
+  return Math.min(fullScale(), Math.max(renderQuality.minScale, budgeted));
+}
+
+/** Ignores frame times for a moment (after a resize or screen change). */
+function settleFrames(ms = 600) {
+  renderQuality.settleUntil = Math.max(renderQuality.settleUntil, performance.now() + ms);
+  renderQuality.intervals.length = 0;
+}
+
+/**
+ * Called at the start of each animation frame to track frame times and adjust
+ * quality. Returns false to skip drawing this frame (60 fps cap).
+ */
+function paceFrame(nowMs) {
+  const q = renderQuality;
+  const interval = q.lastDrawn === null ? 0 : nowMs - q.lastDrawn;
+  if (q.cap60 && interval >= 0 && interval < 12.5) return false;
+  q.lastDrawn = nowMs;
+  q.drawn += 1;
+  if (document.hidden || nowMs < q.settleUntil || !(interval > 0 && interval < 250)) return true;
+  if (q.intervals.length === 0) q.windowStart = nowMs;
+  q.intervals.push(interval);
+  if (nowMs - q.windowStart >= 750 && q.intervals.length >= 15) assessFrames();
+  return true;
+}
+
+/** Looks at the last window of frame times: steps resolution down, or caps at 60 fps, if frames are being missed. */
+function assessFrames() {
+  const q = renderQuality;
+  const times = q.intervals.slice().sort((a, b) => a - b);
+  q.intervals.length = 0;
+  const shareOver = (limit) => times.filter((t) => t > limit).length / times.length;
+  const mean = times.reduce((sum, t) => sum + t, 0) / times.length;
+  // About one display refresh: the shortest typical interval.
+  const refresh = times[Math.floor(times.length * 0.1)];
+
+  // More than one frame in ten slower than 40 fps (a visible stutter), twice
+  // running: on the menu, first turn the turntable at 30 fps; then draw fewer
+  // pixels. Cost follows the pixel count, so aim straight for 60 fps, keeping
+  // between 36% and 72% of the pixels each step. If a step didn't cut the
+  // stutter by at least a quarter, the resolution isn't what's holding frames
+  // back, so it stays where it is.
+  const slowShare = shareOver(25);
+  if (slowShare > 0.1) {
+    q.slowChecks += 1;
+    if (q.slowChecks >= 2) {
+      q.slowChecks = 0;
+      const screen = activeScreen;
+      if (screen === 'menu' && !q.slowTurntable) {
+        q.slowTurntable = true;
+      } else if (q.stepShare[screen] !== undefined && slowShare > q.stepShare[screen] * 0.75) {
+        q.stalled[screen] = true;
+      } else if (!q.stalled[screen] && view.dpr > q.minScale + 0.01) {
+        q.stepShare[screen] = slowShare;
+        q.budgets[screen] = canvas.width * canvas.height * clamp(16.7 / mean, 0.36, 0.72);
+        sizeCanvas();
+      }
+      settleFrames(1000);
+    }
+    return;
+  }
+  q.slowChecks = 0;
+  // A 120 Hz (or faster) display missing a fifth of its frames: hold a steady
+  // 60. (Not at 90 Hz, where skipping every other refresh would mean 45 fps.)
+  if (!q.cap60 && refresh < 9.5 && shareOver(refresh * 1.5) > 0.2) {
+    q.cap60 = true;
+    settleFrames(500);
+  }
+}
 
 // MARK: Frame loop
 
 function frame(nowMs) {
   requestAnimationFrame(frame);
+  if (!paceFrame(nowMs)) return;
   const now = nowMs / 1000;
 
   // Portrait plays the same world rotated a quarter turn, so the pilot climbs
@@ -1156,7 +1288,7 @@ function frame(nowMs) {
   renderer.screenShake = Settings.screenShake;
   renderer.draw(ctx, model, worldW, worldH);
 
-  if (activeScreen === 'menu') renderTurntable(now);
+  if (activeScreen === 'menu' && (!renderQuality.slowTurntable || renderQuality.drawn % 2 === 0)) renderTurntable(now);
   renderControlsDemo();
   PanelTitle.renderAll(now);
 }

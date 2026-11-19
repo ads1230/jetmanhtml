@@ -2,6 +2,8 @@
 
 // Draws a GameModel into a Canvas 2D context (port of GameRenderer.swift).
 // SwiftUI's `.plusLighter` blend maps to `globalCompositeOperation = 'lighter'`.
+// The final vignette is a CSS layer over the canvas (`.vignette` in style.css),
+// so the browser composites it instead of the canvas filling it every frame.
 
 // Fixed colors for the pilot and his effects; the cave, scenery and blocks
 // take their colors from the level's theme (`model.palette`).
@@ -71,8 +73,6 @@ class GameRenderer {
     }
     this.drawParticles(ctx, false);
     ctx.restore();
-
-    this.drawVignette(ctx);
   }
 
   // MARK: Background
@@ -81,12 +81,7 @@ class GameRenderer {
     const { w, h } = this;
     const palette = this.palette;
     // Back wall: darkest at the top and bottom, faintly lit in the middle.
-    const wall = ctx.createLinearGradient(0, 0, 0, h);
-    wall.addColorStop(0, css(palette.backEdge));
-    wall.addColorStop(0.5, css(palette.backMiddle));
-    wall.addColorStop(1, css(palette.backEdge));
-    ctx.fillStyle = wall;
-    ctx.fillRect(0, 0, w, h);
+    this.fillBackWall(ctx, palette.backEdge, palette.backMiddle);
 
     // Scenery for the level's style; two styles crossfade during a level change.
     for (const scenery of ['cave', 'station']) {
@@ -116,6 +111,30 @@ class GameRenderer {
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  /**
+   * The back wall's gradient (`edge` at the top and bottom, `middle` halfway),
+   * drawn as thin solid bands. It looks the same as one gradient fill, since
+   * neighbouring bands differ by at most one 8-bit colour level, but costs a
+   * fraction as much where canvases are rasterized on the CPU (Safari). Each
+   * band overlaps the next by a device pixel, so their edges never blend with
+   * the previous frame.
+   */
+  fillBackWall(ctx, edge, middle) {
+    const { w, h } = this;
+    const t = ctx.getTransform();
+    const overlap = 1 / Math.max(Math.hypot(t.c, t.d), 0.01);
+    const half = GameRenderer.backWallBands;
+    for (let i = 0; i < half * 2; i++) {
+      // Distance from the middle of the band to the nearer edge, 0...1 (1 = middle of the screen).
+      const k = 1 - Math.abs((i + 0.5) / half - 1);
+      const y0 = i === 0 ? -2 : (i * h) / (half * 2);
+      const y1 = i === half * 2 - 1 ? h + 2 : ((i + 1) * h) / (half * 2) + overlap;
+      ctx.fillStyle = rgba(edge[0] + (middle[0] - edge[0]) * k, edge[1] + (middle[1] - edge[1]) * k,
+        edge[2] + (middle[2] - edge[2]) * k);
+      ctx.fillRect(-2, y0, w + 4, y1 - y0);
+    }
   }
 
   /** Rock texture, light shafts, and far and near layers of stalactites and stalagmites. */
@@ -826,21 +845,16 @@ class GameRenderer {
     ctx.restore();
   }
 
-  // MARK: Post
-
-  drawVignette(ctx) {
-    const cx = this.w / 2, cy = this.h / 2;
-    const radius = Math.hypot(this.w, this.h) / 2;
-    const g = ctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius);
-    g.addColorStop(0, CLEAR);
-    g.addColorStop(1, 'rgba(0,0,0,0.45)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, this.w, this.h);
-  }
 }
 
 /** SwiftUI's rounded system font, for the "×2" pickup label. */
 GameRenderer.roundedFont = 'ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+/**
+ * Bands in each half of the back wall. The largest edge-to-middle difference
+ * of any level (Frost Moon's blue, 56 levels) still steps under one level per band.
+ */
+GameRenderer.backWallBands = 64;
 
 /** Crystal shards: (angle, length scale). */
 GameRenderer.shards = [[-0.45, 0.7], [0.0, 1.0], [0.4, 0.8]];
