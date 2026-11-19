@@ -35,6 +35,7 @@ let hud = {
   /** 'flap', 'steer' (portrait) or 'glide'. Steering means either of the last two. */
   controlMode: 'flap', isSteering: false, isPortrait: false,
   powerUps: [], powerUpKey: '', pickupCount: 0, shieldBreakCount: 0, shotCount: 0, blastCount: 0,
+  speedNotch: 0, level: 0, brakeCount: 0,
 };
 
 function syncHUD() {
@@ -55,6 +56,9 @@ function syncHUD() {
     shieldBreakCount: model.shieldBreakCount,
     shotCount: model.shotCount,
     blastCount: model.blastCount,
+    speedNotch: model.speedNotch,
+    level: model.level,
+    brakeCount: model.brakeCount,
   };
   next.powerUpKey = next.powerUps.map((p) => `${p.kind}:${p.secondsLeft === null ? '' : p.secondsLeft}`).join('|');
   const prev = hud;
@@ -65,6 +69,13 @@ function syncHUD() {
   if (next.shotCount !== prev.shotCount) playSound('laser');
   if (next.blastCount !== prev.blastCount) playSound('shieldBreak');
   if (next.crashCount !== prev.crashCount) onCrash();
+  if (next.level !== prev.level) onLevelChange();
+  if (next.speedNotch > prev.speedNotch && next.phase === 'playing') {
+    showBanner({ title: 'SPEED UP', symbol: Icons.svg('chevronForward2'), color: SystemColor.orange });
+  }
+  if (next.brakeCount !== prev.brakeCount) {
+    showBanner({ title: 'BRAKE', subtitle: 'Speed down', symbol: powerUpIconSVG('gauge'), color: PowerUpKind.brake.color });
+  }
   if (next.phase !== prev.phase) onPhaseChange();
   updateGameOverlay(prev, next);
 }
@@ -105,7 +116,69 @@ function onPhaseChange() {
     lastRank = null;
     // Steering runs have no flaps, so mark the start with a chirp.
     if (hud.isSteering && typeof sound !== 'undefined') sound.play('start');
+  } else {
+    clearBanner();
   }
+}
+
+/** A new level: a chirp and a big banner with the level's name. */
+function onLevelChange() {
+  if (!(hud.level > 0)) return;
+  playSound('start');
+  showBanner({ title: `LEVEL ${hud.level + 1}`, subtitle: LevelTheme.forLevel(hud.level).name, isMajor: true });
+}
+
+// MARK: Run banners
+
+/**
+ * Brief banners during a run (RunBanner in ContentView.swift):
+ * { title, subtitle, symbol (icon markup), color, isMajor }. Level banners
+ * are big, last 2.2 s and aren't replaced by a speed-up; the others last 1.3 s.
+ */
+const runBanner = { message: null, timer: null, hideTimer: null };
+
+function showBanner(message) {
+  if (runBanner.message && runBanner.message.isMajor && !message.isMajor) return;
+  const replacing = runBanner.message !== null;
+  runBanner.message = message;
+  const el = $('run-banner');
+  clearTimeout(runBanner.hideTimer);
+  if (replacing) {
+    // Already up: morph the capsule to the new size and fade the new text in.
+    const from = { width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` };
+    fillBanner(el, message);
+    const to = { width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` };
+    if (typeof el.animate === 'function') {
+      el.animate([from, to], { duration: 350, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.05)' });
+      for (const child of el.children) child.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, easing: 'ease-out' });
+    }
+  } else {
+    fillBanner(el, message);
+    el.classList.remove('is-hidden');
+    void el.offsetWidth; // start the transition from the scaled-down, clear state
+    el.classList.remove('is-out');
+  }
+  clearTimeout(runBanner.timer);
+  runBanner.timer = setTimeout(clearBanner, message.isMajor ? 2200 : 1300);
+}
+
+function clearBanner() {
+  clearTimeout(runBanner.timer);
+  runBanner.timer = null;
+  if (!runBanner.message) return;
+  runBanner.message = null;
+  const el = $('run-banner');
+  el.classList.add('is-out');
+  clearTimeout(runBanner.hideTimer);
+  runBanner.hideTimer = setTimeout(() => el.classList.add('is-hidden'), 400);
+}
+
+function fillBanner(el, message) {
+  el.classList.toggle('major', !!message.isMajor);
+  el.style.setProperty('--banner-color', css(message.color || [1, 1, 1]));
+  el.querySelector('.run-banner-symbol').innerHTML = message.symbol || '';
+  el.querySelector('.run-banner-text').textContent = message.title;
+  el.querySelector('.run-banner-subtitle').textContent = message.subtitle || '';
 }
 
 /** Haptics (where the browser can vibrate): a light tap per flap, a medium one per pickup, heavier bumps for a shield break and a crash. */

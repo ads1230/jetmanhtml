@@ -4,11 +4,12 @@
 // PowerUps.swift).
 
 /** Power-up kinds, in the app's order (also the order of the HUD chips). */
-const POWER_UP_IDS = ['shield', 'miniBlocks', 'slowMotion', 'doubleScore', 'ghostWalls', 'rayGun'];
+const POWER_UP_IDS = ['shield', 'miniBlocks', 'slowMotion', 'doubleScore', 'ghostWalls', 'rayGun', 'brake'];
 
 /**
  * Each kind's name, how long it lasts in seconds (the shield lasts until
- * used), its icon (Double Score shows "×2" text instead) and color.
+ * used, and the brake acts instantly), its icon (Double Score shows "×2" text
+ * instead) and color.
  */
 const PowerUpKind = {
   /** Absorbs the next hit (block destroyed, or nudged off the wall). */
@@ -23,6 +24,8 @@ const PowerUpKind = {
   ghostWalls: { name: 'Ghost Walls', duration: 10, icon: 'squareDashed', color: [0.45, 1.0, 0.55] },
   /** Auto-fires laser bolts that blow up blocks for a while. */
   rayGun: { name: 'Ray Gun', duration: 8, icon: 'bolt', color: [1.0, 0.32, 0.32] },
+  /** Instantly knocks the speed back down a couple of notches. */
+  brake: { name: 'Brake', duration: null, icon: 'gauge', color: [0.42, 0.62, 1.0] },
 };
 for (const id of POWER_UP_IDS) PowerUpKind[id].id = id;
 
@@ -55,7 +58,8 @@ function blocksUntilNextPickup() {
 /**
  * Icons for the pickups and HUD chips, standing in for the SF Symbols the app
  * uses (shield.fill, arrow.down.right.and.arrow.up.left, tortoise.fill,
- * square.dashed, bolt.fill). SVG path data in a 24 x 24 box, filled or stroked.
+ * square.dashed, bolt.fill, gauge.with.dots.needle.33percent). SVG path data
+ * in a 24 x 24 box: a filled part, a stroked part, or both.
  */
 const PowerUpIcons = {
   shield: {
@@ -79,15 +83,26 @@ const PowerUpIcons = {
     fill: 'M13.7 2.2L4.8 13.3a.75.75 0 0 0 .58 1.22h5.5l-1.5 7.2c-.16.78.82 1.24 1.32.62l8.9-11.1' +
       'a.75.75 0 0 0-.58-1.22h-5.5l1.5-7.2c.16-.78-.82-1.24-1.32-.62z',
   },
+  /** A gauge with dots around its dial and the needle a third of the way round. */
+  gauge: {
+    stroke: 'M12 2.6a9.4 9.4 0 1 1 0 18.8a9.4 9.4 0 1 1 0-18.8zM12 12L7.54 7.69',
+    width: 2.1,
+    fill: 'M13.80 12.00a1.8 1.8 0 1 1 -3.60 0a1.8 1.8 0 1 1 3.60 0zM7.28 15.30a1.0 1.0 0 1 1 -2.00 0a1.0 1.0 0 1 1 2.00 0' +
+      'zM6.80 9.74a1.0 1.0 0 1 1 -2.00 0a1.0 1.0 0 1 1 2.00 0zM10.21 6.02a1.0 1.0 0 1 1 -2.00 0a1.0 1.0 0 1 1 2.00 0z' +
+      'M15.79 6.02a1.0 1.0 0 1 1 -2.00 0a1.0 1.0 0 1 1 2.00 0zM19.20 9.74a1.0 1.0 0 1 1 -2.00 0a1.0 1.0 0 1 1 2.00 0z' +
+      'M18.72 15.30a1.0 1.0 0 1 1 -2.00 0a1.0 1.0 0 1 1 2.00 0z',
+  },
 };
 
 /** SVG markup for a power-up icon (HUD chips). */
 function powerUpIconSVG(name) {
   const icon = PowerUpIcons[name];
-  const body = icon.fill
-    ? `<path d="${icon.fill}"/>`
-    : `<path d="${icon.stroke}" fill="none" stroke="currentColor" stroke-width="${icon.width}" stroke-linecap="round" ` +
+  let body = '';
+  if (icon.fill) body += `<path d="${icon.fill}"/>`;
+  if (icon.stroke) {
+    body += `<path d="${icon.stroke}" fill="none" stroke="currentColor" stroke-width="${icon.width}" stroke-linecap="round" ` +
       `stroke-linejoin="round"${icon.dash ? ` stroke-dasharray="${icon.dash.join(' ')}"` : ''}/>`;
+  }
   return `<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${body}</svg>`;
 }
 
@@ -96,24 +111,25 @@ const powerUpIconPaths = new Map();
 /** Draws a power-up icon centered at the origin of `ctx`, `side` units across, in `style`. */
 function drawPowerUpIcon(ctx, name, side, style) {
   const icon = PowerUpIcons[name];
-  let path = powerUpIconPaths.get(name);
-  if (!path) {
-    path = new Path2D(icon.fill || icon.stroke);
-    powerUpIconPaths.set(name, path);
+  let paths = powerUpIconPaths.get(name);
+  if (!paths) {
+    paths = { fill: icon.fill && new Path2D(icon.fill), stroke: icon.stroke && new Path2D(icon.stroke) };
+    powerUpIconPaths.set(name, paths);
   }
   ctx.save();
   ctx.scale(side / 24, side / 24);
   ctx.translate(-12, -12);
-  if (icon.fill) {
+  if (paths.fill) {
     ctx.fillStyle = style;
-    ctx.fill(path);
-  } else {
+    ctx.fill(paths.fill);
+  }
+  if (paths.stroke) {
     ctx.strokeStyle = style;
     ctx.lineWidth = icon.width;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (icon.dash) ctx.setLineDash(icon.dash);
-    ctx.stroke(path);
+    ctx.stroke(paths.stroke);
   }
   ctx.restore();
 }

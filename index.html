@@ -54,6 +54,14 @@
         <div id="power-up-chips" class="power-up-chips"></div>
       </div>
 
+      <!-- Brief banners during a run: a new level, a speed-up or a Brake. -->
+      <div class="run-banner-area" role="status" aria-live="polite">
+        <div id="run-banner" class="glass run-banner is-out is-hidden">
+          <div class="run-banner-title"><span class="run-banner-symbol"></span><span class="run-banner-text"></span></div>
+          <div class="run-banner-subtitle"></div>
+        </div>
+      </div>
+
       <!-- Touch steering hint on Get Ready: an animated finger for Swipe, lit screen halves for Hold. -->
       <canvas id="controls-demo" class="controls-demo is-hidden" aria-hidden="true"></canvas>
 
@@ -173,6 +181,7 @@
   <script src="js/skins.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/powerups.js"></script>
+  <script src="js/levelthemes.js"></script>
   <script src="js/model.js"></script>
   <script src="js/pilot2d.js"></script>
   <script src="js/renderer.js"></script>

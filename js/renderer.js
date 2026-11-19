@@ -3,11 +3,9 @@
 // Draws a GameModel into a Canvas 2D context (port of GameRenderer.swift).
 // SwiftUI's `.plusLighter` blend maps to `globalCompositeOperation = 'lighter'`.
 
-const ROCK_LIGHT = [0.11, 0.15, 0.30];
-const ROCK_DARK = [0.03, 0.04, 0.11];
+// Fixed colors for the pilot and his effects; the cave, scenery and blocks
+// take their colors from the level's theme (`model.palette`).
 const NEON_CYAN = [0.31, 0.96, 1.0];
-const NEON_VIOLET = [0.62, 0.42, 1.0];
-const HOT_PINK = [1.0, 0.24, 0.55];
 const HOT_ORANGE = [1.0, 0.55, 0.22];
 const CLEAR = 'rgba(0,0,0,0)';
 
@@ -27,6 +25,9 @@ class GameRenderer {
   get unit() { return Math.min(this.h, this.w / GameModel.minimumAspect); }
   /** Vertical offset of the playfield when letterboxed. */
   get originY() { return (this.h - this.unit) / 2; }
+
+  /** This level's colors (blended during a level change). */
+  get palette() { return this.model.palette; }
 
   screenX(worldX) { return (worldX - this.model.cameraX) * this._unit; }
   screenY(worldY) { return this._originY + worldY * this._unit; }
@@ -78,29 +79,27 @@ class GameRenderer {
 
   drawBackdrop(ctx) {
     const { w, h } = this;
-    // Back wall of the cave: darkest at the top and bottom, faintly lit in the middle.
+    const palette = this.palette;
+    // Back wall: darkest at the top and bottom, faintly lit in the middle.
     const wall = ctx.createLinearGradient(0, 0, 0, h);
-    wall.addColorStop(0, css(ROCK_DARK));
-    wall.addColorStop(0.5, rgba(0.09, 0.07, 0.20));
-    wall.addColorStop(1, css(ROCK_DARK));
+    wall.addColorStop(0, css(palette.backEdge));
+    wall.addColorStop(0.5, css(palette.backMiddle));
+    wall.addColorStop(1, css(palette.backEdge));
     ctx.fillStyle = wall;
     ctx.fillRect(0, 0, w, h);
 
-    // Rock texture on the back wall.
-    this.drawWallPatches(ctx);
+    // Scenery for the level's style; two styles crossfade during a level change.
+    for (const scenery of ['cave', 'station']) {
+      const weight = this.model.sceneryWeights[scenery] || 0;
+      if (!(weight > 0.001)) continue;
+      ctx.save();
+      ctx.globalAlpha = weight;
+      if (scenery === 'cave') this.drawCaveScenery(ctx);
+      else this.drawStationScenery(ctx);
+      ctx.restore();
+    }
 
-    // Light shafts falling through cracks in the ceiling.
-    this.drawLightShafts(ctx);
-
-    // Far and near layers of stalactites and stalagmites.
-    const far = [0.12, 0.09, 0.25];
-    const near = [0.07, 0.06, 0.17];
-    this.drawFormations(ctx, 0.15, 0.16, 0.38, true, far, 11, false);
-    this.drawFormations(ctx, 0.15, 0.19, 0.34, false, far, 23, false);
-    this.drawFormations(ctx, 0.35, 0.27, 0.32, true, near, 37, true);
-    this.drawFormations(ctx, 0.35, 0.3, 0.3, false, near, 41, true);
-
-    // Drifting dust motes catching the light.
+    // Drifting motes catching the light (dust, embers, snow or sparks).
     const m = this.model;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -108,16 +107,160 @@ class GameRenderer {
     for (const mote of GameRenderer.motes) {
       let x = (mote.x * tile - m.cameraX * this._unit * 0.5 + Math.sin(m.time * 0.4 + mote.phase) * 12) % tile;
       if (x < 0) x += tile;
-      let y = (mote.y * h - m.time * 6) % h;
+      let y = (mote.y * h - m.moteDrift) % h;
       if (y < 0) y += h;
       const alpha = 0.25 + 0.2 * Math.sin(m.time * 1.5 + mote.phase);
       const s = mote.size;
-      ctx.fillStyle = css(NEON_CYAN, alpha);
+      ctx.fillStyle = css(palette.mote, alpha);
       ellipsePath(ctx, x - s / 2, y - s / 2, s, s);
       ctx.fill();
     }
     ctx.restore();
   }
+
+  /** Rock texture, light shafts, and far and near layers of stalactites and stalagmites. */
+  drawCaveScenery(ctx) {
+    this.drawWallPatches(ctx);
+    this.drawLightShafts(ctx);
+    const { far, near } = this.palette;
+    this.drawFormations(ctx, 0.15, 0.16, 0.38, true, far, 11, false);
+    this.drawFormations(ctx, 0.15, 0.19, 0.34, false, far, 23, false);
+    this.drawFormations(ctx, 0.35, 0.27, 0.32, true, near, 37, true);
+    this.drawFormations(ctx, 0.35, 0.3, 0.3, false, near, 41, true);
+  }
+
+  // MARK: Station scenery
+
+  /** Plated far wall, conduits, and towering superstructure with warning lights. */
+  drawStationScenery(ctx) {
+    this.drawStationPanels(ctx);
+    this.drawStationConduits(ctx);
+    this.drawStationTowers(ctx, true, 51);
+    this.drawStationTowers(ctx, false, 61);
+  }
+
+  /** The far wall: a grid of plating panels, some recessed, some with lit window strips. */
+  drawStationPanels(ctx) {
+    const unit = this._unit, m = this.model, palette = this.palette;
+    const parallax = 0.12;
+    const spacing = 0.3;
+    const offset = m.cameraX * parallax;
+    const first = Math.floor(offset / spacing) - 1;
+    const count = Math.trunc(this.w / unit / spacing) + 3;
+    const rows = [0.04, 0.3, 0.5, 0.7, 0.96];
+    for (let k = 0; k <= count; k++) {
+      const i = first + k;
+      const x = (i * spacing - offset) * unit;
+      const width = spacing * unit;
+      for (let row = 0; row < rows.length - 1; row++) {
+        const top = this.screenY(rows[row]), bottom = this.screenY(rows[row + 1]);
+        const px = x + 2, py = top + 2, pw = width - 4, ph = bottom - top - 4;
+        const shade = sceneryHash(i * 7 + row, 71);
+        ctx.fillStyle = css(palette.patch, 0.16 + 0.3 * shade);
+        ctx.fillRect(px, py, pw, ph);
+        if (shade > 0.55) {
+          ctx.strokeStyle = css(palette.detail, 0.12);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px + pw * 0.18, py + ph * 0.22, pw * 0.64, ph * 0.56);
+        }
+        if (sceneryHash(i * 7 + row, 73) > 0.78) {
+          const flicker = 0.7 + 0.3 * Math.sin(m.time * 1.3 + (i + row));
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = css(palette.lightB, 0.35 * flicker);
+          ctx.fillRect(px + pw * 0.15, py + ph / 2 - 1.5, pw * 0.7, 3);
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  /** Two long pipes running along the station, with joints. */
+  drawStationConduits(ctx) {
+    const unit = this._unit, palette = this.palette;
+    const parallax = 0.22;
+    const spacing = 0.25;
+    const offset = this.model.cameraX * parallax;
+    const first = Math.floor(offset / spacing) - 1;
+    const count = Math.trunc(this.w / unit / spacing) + 3;
+    const thickness = 0.018 * unit;
+    for (const level of [0.19, 0.81]) {
+      const y = this.screenY(level);
+      ctx.fillStyle = css(palette.far);
+      ctx.fillRect(-10, y - thickness / 2, this.w + 20, thickness);
+      ctx.fillStyle = css(palette.detail, 0.18);
+      ctx.fillRect(-10, y - thickness / 2, this.w + 20, 1);
+      ctx.fillStyle = css(palette.near);
+      for (let k = 0; k <= count; k++) {
+        const x = ((first + k) * spacing - offset) * unit;
+        ctx.fillRect(x - thickness * 0.4, y - thickness, thickness * 0.8, thickness * 2);
+      }
+    }
+  }
+
+  /** Blocky towers and antennae from the top or bottom, with blinking lights at their tips. */
+  drawStationTowers(ctx, fromTop, seed) {
+    const unit = this._unit, m = this.model, palette = this.palette;
+    const parallax = 0.35;
+    const spacing = 0.24;
+    const offset = m.cameraX * parallax;
+    const first = Math.floor(offset / spacing) - 1;
+    const count = Math.trunc(this.w / unit / spacing) + 3;
+    const direction = fromTop ? 1 : -1;
+    const base = fromTop ? this.screenY(0.04) : this.screenY(0.96);
+    const edge = fromTop ? -20 : this.h + 20;
+    const span = (x, width, y0, length) => {
+      const y1 = y0 + length * direction;
+      ctx.rect(x - width / 2, Math.min(y0, y1), width, Math.abs(y1 - y0));
+    };
+
+    ctx.beginPath();
+    ctx.rect(-20, Math.min(base, edge), this.w + 40, Math.abs(base - edge));
+    const tips = [];
+    for (let k = 0; k <= count; k++) {
+      const i = first + k;
+      if (!(sceneryHash(i, seed) > 0.2)) continue;
+      const cx = (i * spacing - offset + (sceneryHash(i, seed + 1) - 0.5) * spacing * 0.3) * unit;
+      const width = spacing * unit * (0.35 + sceneryHash(i, seed + 2) * 0.4);
+      const length = unit * (0.06 + sceneryHash(i, seed + 3) * 0.2);
+      span(cx, width, base - 2 * direction, length);
+      // A narrower cap on top, and sometimes an antenna.
+      const capLength = length * 0.2;
+      span(cx, width * 0.55, base + length * direction, capLength);
+      let tip = base + (length + capLength) * direction;
+      if (sceneryHash(i, seed + 4) > 0.6) {
+        const mast = unit * 0.06;
+        span(cx, Math.max(1.5, unit * 0.004), tip, mast);
+        tip += mast * direction;
+      }
+      tips.push([cx, tip, i]);
+    }
+    ctx.fillStyle = css(palette.near);
+    ctx.fill();
+    ctx.strokeStyle = css(palette.detail, 0.1);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const r = Math.max(2, unit * 0.007);
+    for (const [tx, ty, i] of tips) {
+      if (!(sceneryHash(i, seed + 5) > 0.35)) continue;
+      const blink = 0.3 + 0.7 * Math.max(0, Math.sin(m.time * 2.6 + i * 1.7));
+      const g = ctx.createRadialGradient(tx, ty, 0, tx, ty, r * 3);
+      g.addColorStop(0, css(palette.lightA, 0.45 * blink));
+      g.addColorStop(1, CLEAR);
+      ctx.fillStyle = g;
+      ellipsePath(ctx, tx - r * 3, ty - r * 3, r * 6, r * 6);
+      ctx.fill();
+      ctx.fillStyle = css(palette.lightA, blink);
+      ellipsePath(ctx, tx - r / 2, ty - r / 2, r, r);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // MARK: Cave scenery
 
   drawWallPatches(ctx) {
     const unit = this._unit;
@@ -126,7 +269,7 @@ class GameRenderer {
     const offset = this.model.cameraX * parallax;
     const first = Math.floor(offset / spacing) - 1;
     const count = Math.trunc(this.w / unit / spacing) + 3;
-    const tint = css([0.16, 0.12, 0.3], 0.5);
+    const tint = css(this.palette.patch, 0.5);
     for (let k = 0; k <= count; k++) {
       const i = first + k;
       const cx = (i * spacing - offset + sceneryHash(i, 3) * spacing) * unit;
@@ -166,8 +309,8 @@ class GameRenderer {
       ctx.lineTo(topX + slant - bottomWidth / 2, this.h);
       ctx.closePath();
       const g = ctx.createLinearGradient(topX, 0, topX + slant, this.h * 0.85);
-      g.addColorStop(0, css(NEON_VIOLET, 0.16 * flicker));
-      g.addColorStop(1, css(NEON_CYAN, 0));
+      g.addColorStop(0, css(this.palette.shaft, 0.16 * flicker));
+      g.addColorStop(1, css(this.palette.shaft, 0));
       ctx.fillStyle = g;
       ctx.fill();
     }
@@ -212,12 +355,13 @@ class GameRenderer {
     ctx.fill();
 
     // Subtle rim light along the formations.
-    ctx.strokeStyle = css(NEON_VIOLET, 0.08);
+    ctx.strokeStyle = css(this.palette.detail, 0.08);
     ctx.lineWidth = 1;
     ctx.stroke();
 
     for (const [x, y, scale, i] of crystalSpots) {
-      this.drawCrystalCluster(ctx, x, y, scale, !fromTop, sceneryHash(i, seed + 6) > 0.5 ? NEON_CYAN : HOT_PINK);
+      this.drawCrystalCluster(ctx, x, y, scale, !fromTop,
+        sceneryHash(i, seed + 6) > 0.5 ? this.palette.lightA : this.palette.lightB);
     }
   }
 
@@ -289,7 +433,9 @@ class GameRenderer {
   drawCave(ctx, visibility = 1) {
     if (!(visibility > 0.001)) return;
     const pad = 40;
-    const unit = this._unit;
+    const unit = this._unit, m = this.model, palette = this.palette;
+    const caveWeight = m.sceneryWeights.cave || 0;
+    const stationWeight = m.sceneryWeights.station || 0;
     for (const isTop of [true, false]) {
       const points = this.edgePoints(isTop);
       if (points.length === 0) continue;
@@ -303,21 +449,51 @@ class GameRenderer {
       ctx.closePath();
       const edgeY = isTop ? this.screenY(0.1) : this.screenY(0.9);
       const rock = ctx.createLinearGradient(0, edgeY, 0, outerY);
-      rock.addColorStop(0, css(ROCK_LIGHT));
-      rock.addColorStop(1, css(ROCK_DARK));
+      rock.addColorStop(0, css(palette.wallLight));
+      rock.addColorStop(1, css(palette.wallDark));
       ctx.save();
       ctx.globalAlpha = visibility;
       ctx.fillStyle = rock;
       ctx.fill();
 
-      // Inner strata lines for depth.
+      // Inner strata lines for depth (cave levels)...
       const direction = isTop ? -1 : 1;
-      ctx.lineWidth = 1.5;
-      for (const [depth, opacity] of [[unit * 0.035, 0.22], [unit * 0.08, 0.12]]) {
+      if (caveWeight > 0.001) {
+        ctx.lineWidth = 1.5;
+        for (const [depth, opacity] of [[unit * 0.035, 0.22], [unit * 0.08, 0.12]]) {
+          ctx.beginPath();
+          this.addSmoothPath(ctx, points, depth * direction);
+          ctx.strokeStyle = css(palette.detail, opacity * caveWeight);
+          ctx.stroke();
+        }
+      }
+      // ...or hull plating seams and a strip of running lights (station).
+      if (stationWeight > 0.001) {
         ctx.beginPath();
-        this.addSmoothPath(ctx, points, depth * direction);
-        ctx.strokeStyle = css(NEON_VIOLET, opacity);
+        points.forEach((point, k) => {
+          if ((m.firstColumnIndex + k) % 3 !== 0) return;
+          ctx.moveTo(point[0], point[1]);
+          ctx.lineTo(point[0], outerY);
+        });
+        ctx.strokeStyle = css(palette.detail, 0.22 * stationWeight);
+        ctx.lineWidth = 1;
         ctx.stroke();
+        ctx.beginPath();
+        this.addSmoothPath(ctx, points, unit * 0.03 * direction);
+        ctx.strokeStyle = css(palette.detail, 0.3 * stationWeight);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const dash = unit * 0.02;
+        ctx.setLineDash([dash, dash * 1.6]);
+        ctx.lineDashOffset = m.cameraX * unit;
+        ctx.beginPath();
+        this.addSmoothPath(ctx, points, unit * 0.055 * direction);
+        ctx.strokeStyle = css(palette.rimB, 0.5 * stationWeight);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
       }
       ctx.restore();
 
@@ -325,9 +501,9 @@ class GameRenderer {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       const shading = ctx.createLinearGradient(0, 0, this.w, 0);
-      shading.addColorStop(0, css(NEON_CYAN));
-      shading.addColorStop(0.5, css(NEON_VIOLET));
-      shading.addColorStop(1, css(NEON_CYAN));
+      shading.addColorStop(0, css(palette.rimA));
+      shading.addColorStop(0.5, css(palette.rimB));
+      shading.addColorStop(1, css(palette.rimA));
       ctx.strokeStyle = shading;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -349,8 +525,10 @@ class GameRenderer {
   // MARK: Obstacles
 
   drawObstacles(ctx) {
-    const unit = this._unit, m = this.model;
+    const unit = this._unit, m = this.model, palette = this.palette;
     const pulse = 0.85 + 0.15 * Math.sin(m.time * 4);
+    const caveWeight = m.sceneryWeights.cave || 0;
+    const stationWeight = m.sceneryWeights.station || 0;
     for (const obstacle of m.obstacles) {
       const o = m.effectiveRect(obstacle);
       const x = this.screenX(o.x), y = this.screenY(o.y), w = o.w * unit, h = o.h * unit;
@@ -359,7 +537,7 @@ class GameRenderer {
 
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = css(HOT_PINK);
+      ctx.strokeStyle = css(palette.blockGlow);
       roundRectPath(ctx, x, y, w, h, radius);
       ctx.globalAlpha = 0.18 * pulse;
       ctx.lineWidth = 16;
@@ -370,22 +548,45 @@ class GameRenderer {
       ctx.restore();
 
       const body = ctx.createLinearGradient(x, y, x + w, y + h);
-      body.addColorStop(0, css(HOT_PINK));
-      body.addColorStop(0.5, rgba(0.55, 0.1, 0.45));
-      body.addColorStop(1, css(HOT_ORANGE));
+      body.addColorStop(0, css(palette.blockA));
+      body.addColorStop(0.5, css(palette.blockB));
+      body.addColorStop(1, css(palette.blockC));
       ctx.fillStyle = body;
       roundRectPath(ctx, x, y, w, h, radius);
       ctx.fill();
 
-      // Glassy core and highlight strip.
-      const dx = w * 0.22, dy = Math.min(8, h * 0.1);
-      const ix = x + dx, iy = y + dy, iw = w - dx * 2, ih = h - dy * 2;
-      const core = ctx.createLinearGradient(ix, 0, ix + iw, 0);
-      core.addColorStop(0, 'rgba(255,255,255,0.35)');
-      core.addColorStop(1, 'rgba(255,255,255,0.02)');
-      ctx.fillStyle = core;
-      roundRectPath(ctx, ix, iy, iw, ih, iw * 0.4);
-      ctx.fill();
+      // Glassy core and highlight strip (cave levels).
+      if (caveWeight > 0.001) {
+        const dx = w * 0.22, dy = Math.min(8, h * 0.1);
+        const ix = x + dx, iy = y + dy, iw = w - dx * 2, ih = h - dy * 2;
+        const core = ctx.createLinearGradient(ix, 0, ix + iw, 0);
+        core.addColorStop(0, rgba(1, 1, 1, 0.35 * caveWeight));
+        core.addColorStop(1, rgba(1, 1, 1, 0.02 * caveWeight));
+        ctx.fillStyle = core;
+        roundRectPath(ctx, ix, iy, iw, ih, iw * 0.4);
+        ctx.fill();
+      }
+      // Armoured plating with dark bands and a warning light (station).
+      if (stationWeight > 0.001) {
+        const band = h * 0.08;
+        ctx.fillStyle = rgba(0, 0, 0, 0.35 * stationWeight);
+        for (const by of [y + h * 0.18, y + h - h * 0.18 - band]) ctx.fillRect(x + 2, by, w - 4, band);
+        const r = Math.min(w * 0.14, 5);
+        const lx = x + w / 2, ly = y + h / 2;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = stationWeight * pulse;
+        const halo = ctx.createRadialGradient(lx, ly, 0, lx, ly, r * 2.5);
+        halo.addColorStop(0, css(palette.lightA, 0.6));
+        halo.addColorStop(1, CLEAR);
+        ctx.fillStyle = halo;
+        ellipsePath(ctx, lx - r * 2.5, ly - r * 2.5, r * 5, r * 5);
+        ctx.fill();
+        ctx.fillStyle = css(palette.lightA);
+        ellipsePath(ctx, lx - r / 2, ly - r / 2, r, r);
+        ctx.fill();
+        ctx.restore();
+      }
 
       ctx.strokeStyle = 'rgba(255,255,255,0.7)';
       ctx.lineWidth = 1.2;

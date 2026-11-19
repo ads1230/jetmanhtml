@@ -81,6 +81,26 @@ class GameModel {
     this.points = 0;
     this.blocksUntilPickup = blocksUntilNextPickup();
 
+    // Speed ramp and levels.
+    /** Speed notches gained this run; each makes the cave `LevelTuning.notchStep` faster. */
+    this.speedNotch = 0;
+    /** Seconds played toward the next notch. */
+    this.notchProgress = 0;
+    /** Speed multiplier from the notches, eased so changes don't jolt. */
+    this.rampScale = LevelTuning.startSpeed;
+    /** Increments each time a Brake is collected, for the HUD. */
+    this.brakeCount = 0;
+    /** Current level (its look comes from `LevelTheme.forLevel`). */
+    this.level = 0;
+    this.previousLevel = 0;
+    this.levelChangeTime = -Infinity;
+    /** This frame's level look, crossfading after a level change. */
+    this.palette = LevelTheme.forLevel(0);
+    /** How much of each scenery style to draw (they crossfade too): { cave, station }. */
+    this.sceneryWeights = { cave: 1, station: 0 };
+    /** Accumulated mote drift in points, so changing speed doesn't make them jump. */
+    this.moteDrift = 0;
+
     this.lastTime = null;
     this.nextObstacleX = Infinity;
     this.calmUntilX = Infinity;
@@ -146,7 +166,67 @@ class GameModel {
     const base = this.controlMode === 'steer' ? GameModel.steerForwardSpeed
       : this.controlMode === 'glide' ? GameModel.glideForwardSpeed
         : GameModel.scrollSpeed;
-    return base * this.difficultyLevel.speedMultiplier * this.timeScale;
+    return base * this.difficultyLevel.speedMultiplier * this.timeScale * this.rampScale;
+  }
+
+  // MARK: Speed ramp and levels
+
+  /** Adds a notch every few seconds of play and eases toward its speed. */
+  updateSpeedRamp(dt) {
+    if (this.speedNotch < LevelTuning.maxNotches) {
+      this.notchProgress += dt * this.timeScale;
+      if (this.notchProgress >= LevelTuning.secondsPerNotch) {
+        this.notchProgress = 0;
+        this.speedNotch += 1;
+      }
+    }
+    const target = LevelTuning.startSpeed * (1 + this.speedNotch * LevelTuning.notchStep);
+    this.rampScale += (target - this.rampScale) * Math.min(1, dt * 1.5);
+  }
+
+  /** Brake power-up: knock a couple of notches off the speed. */
+  brake() {
+    this.speedNotch = Math.max(0, this.speedNotch - LevelTuning.brakeNotches);
+    this.notchProgress = 0;
+    this.brakeCount += 1;
+  }
+
+  /** Shows a level's look straight away (for previews and tests). */
+  previewLevel(level) {
+    this.level = level;
+    this.previousLevel = level;
+    this.levelChangeTime = -Infinity;
+    this.palette = LevelTheme.forLevel(level);
+    this.sceneryWeights = { cave: 0, station: 0 };
+    this.sceneryWeights[this.palette.scenery] = 1;
+  }
+
+  /** Moves to the next level as the score passes each threshold. */
+  updateLevel() {
+    const level = LevelTuning.level(this.score);
+    if (level === this.level) return;
+    this.previousLevel = this.level;
+    this.level = level;
+    this.levelChangeTime = this.time;
+  }
+
+  /** Blends the palette and scenery from the previous level's look while a transition is in progress. */
+  updatePalette(dt) {
+    const t = Math.min(1, Math.max(0, (this.time - this.levelChangeTime) / LevelTuning.themeTransition));
+    const to = LevelTheme.forLevel(this.level);
+    const weights = { cave: 0, station: 0 };
+    if (t >= 1) {
+      this.palette = to;
+      weights[to.scenery] = 1;
+    } else {
+      const from = LevelTheme.forLevel(this.previousLevel);
+      const eased = t * t * (3 - 2 * t);
+      this.palette = LevelTheme.mix(from, to, eased);
+      weights[from.scenery] += 1 - eased;
+      weights[to.scenery] += eased;
+    }
+    this.sceneryWeights = weights;
+    this.moteDrift += this.palette.moteSpeed * dt;
   }
 
   get timeSinceCrash() { return this.time - this.crashTime; }
@@ -254,6 +334,12 @@ class GameModel {
     this.powerUpTimers = new Map();
     this.blockScale = 1;
     this.timeScale = 1;
+    this.speedNotch = 0;
+    this.notchProgress = 0;
+    this.rampScale = LevelTuning.startSpeed;
+    this.level = 0;
+    this.previousLevel = 0;
+    this.levelChangeTime = -Infinity;
     this.bolts = [];
     this.wallOpacity = 1;
     this.fireCooldown = 0;
@@ -349,6 +435,8 @@ class GameModel {
       this.distance += this.forwardSpeed * dt;
       this.points += this.forwardSpeed * dt * 28 * (this.isActive('doubleScore') ? 2 : 1);
       this.updatePowerUps(dt);
+      this.updateSpeedRamp(dt);
+      this.updateLevel();
 
       if (this.controlMode === 'flap') {
         this.velocity = Math.min(GameModel.maxFall, this.velocity + GameModel.gravity * dt);
@@ -362,7 +450,9 @@ class GameModel {
         // steering. Ease toward that speed (about a tenth of a second) instead
         // of snapping, so starts, stops, reversals and the tilt that follows
         // them stay smooth. The jetpack burns steadily.
-        const targetVelocity = this.steerDirection * GameModel.steerSpeed * this.steerSpeedScale;
+        // Sideways speed keeps up (partly) as the cave speeds up.
+        const rampGain = this.rampScale / LevelTuning.startSpeed - 1;
+        const targetVelocity = this.steerDirection * GameModel.steerSpeed * this.steerSpeedScale * (1 + rampGain * 0.5);
         this.velocity += (targetVelocity - this.velocity) * Math.min(1, dt * GameModel.steerResponsiveness);
         this.flameTimer = 0.1;
       }
@@ -392,6 +482,7 @@ class GameModel {
     }
 
     this.shake = Math.max(0, this.shake - dt * 2.2);
+    this.updatePalette(dt);
     this.updateParticles(dt);
   }
 
@@ -615,7 +706,12 @@ class GameModel {
     this.blocksUntilPickup = blocksUntilNextPickup();
     const x = blockEndX + (GameModel.obstacleSpacing - GameModel.obstacleWidth) / 2;
     const bounds = this.caveBounds(x);
-    const kind = POWER_UP_IDS[Math.floor(Math.random() * POWER_UP_IDS.length)];
+    // Brake is only offered once he's going fast, and more often the faster he goes.
+    const kinds = POWER_UP_IDS.filter((k) => k !== 'brake');
+    if (this.speedNotch >= LevelTuning.brakeMinimumNotch) {
+      for (let i = 0; i < (this.speedNotch >= 6 ? 3 : 1); i++) kinds.push('brake');
+    }
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
     this.pickups.push({ x, y: (bounds[0] + bounds[1]) / 2, kind });
   }
 
@@ -635,8 +731,9 @@ class GameModel {
 
   apply(pickup) {
     const duration = PowerUpKind[pickup.kind].duration;
-    if (duration !== null) this.powerUpTimers.set(pickup.kind, duration);
-    else this.hasShield = true;
+    if (pickup.kind === 'shield') this.hasShield = true;
+    else if (pickup.kind === 'brake') this.brake();
+    else if (duration !== null) this.powerUpTimers.set(pickup.kind, duration);
     this.pickupCount += 1;
     this.burst(pickup.x, pickup.y, 24, 0.2, 0.6);
   }
@@ -814,14 +911,14 @@ GameModel.steerSpeed = 0.75;
 GameModel.steerResponsiveness = 12.0;
 /**
  * Portrait climbs a little faster than landscape scrolls, since steering
- * sideways is easier than flapping against gravity: 1.3 playfield units per
- * second on Normal (landscape Normal is 1.08).
+ * sideways is easier than flapping against gravity: 1.4 playfield units per
+ * second on Normal (landscape Normal is 1.08), before the speed ramp.
  */
-GameModel.steerForwardSpeed = 1.3;
+GameModel.steerForwardSpeed = 1.4;
 GameModel.steerForwardSpeedMultiplier = GameModel.steerForwardSpeed / GameModel.scrollSpeed;
 /**
  * Landscape glide's forward speed on Normal: faster than flapping (1.08) and
- * portrait (1.3), since its wide view shows more of the cave ahead.
+ * portrait (1.4), since its wide view shows more of the cave ahead.
  */
 GameModel.glideForwardSpeed = 1.45;
 

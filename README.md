@@ -13,6 +13,18 @@ Open `index.html` in a browser. It works straight from disk (`file://`) or from 
 - **Menu:** pick one of seven pilots (Navy, Stealth, Pink, Mecha, Vanguard, Joker, Hero) with the swatches or ← / →, then Play. The trophy opens the local top-5 board and the gear opens Settings.
 - **Esc** closes panels and returns to the menu between runs.
 
+### Speed and levels
+
+- Runs start at 85% of each mode's speed and get a notch faster every 10 seconds of play (Slow-Mo stretches the wait), up to 12 notches, about 1.56× the tuned speed after two minutes. A **SPEED UP** banner marks each notch. Portrait climbs at 1.4 playfield units a second on Normal before the ramp.
+- Points also move you through levels: level 2 at 500 points, then each level needs 300 more than the one before (500, 800, 1100…). The cave stays the same; its colors, scenery and drifting motes crossfade over 1.6 seconds, with a chirp and a **LEVEL** banner naming the new look:
+  1. **Crystal Cave:** the original violet cave with cyan and pink crystals.
+  2. **Battle Station:** a grey space-station interior with plated walls, conduits, towering superstructure, red warning lights and armoured blocks.
+  3. **Magma Core:** red rock, orange light and rising embers.
+  4. **Frost Moon:** icy blue with falling snow.
+  5. **Toxic Planet:** green and violet, with lime motes drifting up.
+
+  After level 5 the looks repeat.
+
 ### Power-ups
 
 One power-up floats in the gap after a block every 10 to 15 blocks, and only one is in play at a time. Active ones show as chips under the score, with the seconds left.
@@ -23,6 +35,7 @@ One power-up floats in the gap after a block every 10 to 15 blocks, and only one
 - **Double Score** (8 s): points count twice as fast.
 - **Ghost Walls** (10 s): the walls fade out and can't hurt you. They flicker back as a warning before it ends.
 - **Ray Gun** (8 s): auto-fires laser bolts that blow up blocks.
+- **Brake:** instantly knocks the speed back down two notches, with a **BRAKE** banner. It only turns up once you're three notches up, and three times as often from six notches.
 
 ### Settings
 
@@ -47,8 +60,9 @@ The settings match the app:
 | `js/skins.js` | Pilot skins, palettes and menu swatches | `PilotSkin.swift` |
 | `js/settings.js` | Settings keys, mode lock and difficulty tuning | `GameSettings.swift` |
 | `js/powerups.js` | Power-up kinds, durations, colors, tuning and their icons | `PowerUps.swift` |
-| `js/model.js` | Simulation: physics, cave generation, blocks, collisions, power-ups, particles, scoring, Flap/Glide/portrait control modes | `GameModel.swift` |
-| `js/renderer.js` | Draws the cave backdrop, walls, blocks, power-ups, bolts, shield, particles and pilot into the canvas | `GameRenderer.swift` |
+| `js/levelthemes.js` | Speed ramp and level pacing, and the five level looks (colors, scenery style, motes) | `LevelThemes.swift` |
+| `js/model.js` | Simulation: physics, cave generation, blocks, collisions, power-ups, speed ramp, levels, particles, scoring, Flap/Glide/portrait control modes | `GameModel.swift` |
+| `js/renderer.js` | Draws the backdrop (cave or station scenery in the level's colors), walls, blocks, power-ups, bolts, shield, particles and pilot into the canvas | `GameRenderer.swift` |
 | `js/pilot2d.js` | Flat 2D pilots for every skin (fallback if 3D sprites can't be made) | `GameRenderer.swift` (2D sprites) |
 | `js/pilot3d.js` | Software 3D renderer: pilot meshes per skin, menu turntable, cached in-game side/back sprites | `PilotTurntableView.swift` |
 | `js/logo.js` | Riveted two-tone panel lettering for JETMAN, GET READY, GAME OVER and HIGH SCORES | `JetmanLogo.swift` |
@@ -56,7 +70,7 @@ The settings match the app:
 | `js/scoreboard.js` | Local top-5 scores | `Scoreboard.swift` |
 | `js/sound.js` | Flap, start, crash, high-score, power-up, shield-break and laser sounds synthesized at startup | `SoundEngine.swift` |
 | `js/controlsdemo.js` | Animated touch steering hint on the Get Ready screen (Swipe and Hold) | `ControlsDemo.swift` |
-| `js/app.js` | Screens, HUD and power-up chips, hold/swipe/keyboard input, menu layout choice and the frame loop | `ContentView.swift` |
+| `js/app.js` | Screens, HUD, power-up chips and run banners, hold/swipe/keyboard input, menu layout choice and the frame loop | `ContentView.swift` |
 
 ## Porting notes
 
@@ -66,6 +80,7 @@ The settings match the app:
 - The 3D pilots use the same meshes, camera, lights, shading and painter's-algorithm sorting as the Swift renderer. The menu turntable renders every frame; in game, each skin's side and back views are rendered once to an offscreen canvas and then rotated, with live 2D flames on top.
 - The main menu picks the first of the app's four layouts that fits the window, like `ViewThatFits`. The scoreboard switches to its compact layout on short screens.
 - Power-ups, Glide and swipe steering follow the app's code exactly: the spawn rules, timers, easing, shield grace, Ghost Walls push-back, Ray Gun fire rate, the 6 px swipe threshold, 0.25 s swipe hold and 1.3× swipe speed.
+- The speed ramp, Brake and levels do too: the notch timing and easing, steering that speeds up by half as much as the cave, the level thresholds, the smoothstep crossfade between looks and the run banners' wording, timing and sizes.
 - Sounds use the same synthesis (filtered noise, sine sweeps, the C-E-G-C arpeggio) and the same six-voice pool. Browsers only allow audio after the first tap, click or key press.
 
 ### Differences from the app

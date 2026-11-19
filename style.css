@@ -1154,6 +1154,76 @@ button:focus-visible {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Run banners: "LEVEL 2 / Battle Station", "SPEED UP" and "BRAKE", in a glass
+   capsule 80 points below the top. They scale up from 0.85 and fade in, and
+   morph to the new size when one message replaces another. */
+.run-banner-area {
+  position: absolute;
+  top: calc(80px + var(--safe-top));
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.run-banner {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-rounded);
+  color: #fff;
+  transition: transform 0.4s var(--snappy), opacity 0.25s ease;
+}
+
+.run-banner.major {
+  padding: 14px 28px;
+}
+
+.run-banner.is-out {
+  transform: scale(0.85);
+  opacity: 0;
+}
+
+.run-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 900;
+  color: var(--banner-color, #fff);
+}
+
+.run-banner.major .run-banner-title {
+  font-size: 28px;
+  line-height: 34px;
+}
+
+.run-banner-symbol:empty {
+  display: none;
+}
+
+.run-banner-subtitle {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.run-banner-subtitle:empty {
+  display: none;
+}
+
 /* Setting rows that only apply to some game modes: they slide in from the
    top and fade, and collapse (taking their gap with them) when hidden. */
 .setting-row.collapsible {

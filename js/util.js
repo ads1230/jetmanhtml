@@ -104,7 +104,7 @@ const sceneryHashCache = new Map();
  * laid out exactly like the original's.
  */
 function sceneryHash(i, seed) {
-  const key = i * 64 + seed;
+  const key = i * 128 + seed; // seeds are all below 128
   let value = sceneryHashCache.get(key);
   if (value !== undefined) return value;
   let x = (BigInt.asUintN(64, BigInt(i)) * 0x9E3779B97F4A7C15n + BigInt(seed) * 0xBF58476D1CE4E5B9n) & U64_MASK;
