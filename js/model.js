@@ -143,9 +143,9 @@ class GameModel {
 
   /** Forward speed for the current mode, in playfield units per second. */
   get forwardSpeed() {
-    const base = this.usesSteering
-      ? GameModel.scrollSpeed * GameModel.steerForwardSpeedMultiplier
-      : GameModel.scrollSpeed;
+    const base = this.controlMode === 'steer' ? GameModel.steerForwardSpeed
+      : this.controlMode === 'glide' ? GameModel.glideForwardSpeed
+        : GameModel.scrollSpeed;
     return base * this.difficultyLevel.speedMultiplier * this.timeScale;
   }
 
@@ -358,9 +358,12 @@ class GameModel {
           this.steerDirection = 0;
           this.steerExpiry = null;
         }
-        // Constant climb with no gravity; sideways at a constant speed while
-        // a side is held. The jetpack burns steadily.
-        this.velocity = this.steerDirection * GameModel.steerSpeed * this.steerSpeedScale;
+        // Constant climb with no gravity; sideways at a steady speed while
+        // steering. Ease toward that speed (about a tenth of a second) instead
+        // of snapping, so starts, stops, reversals and the tilt that follows
+        // them stay smooth. The jetpack burns steadily.
+        const targetVelocity = this.steerDirection * GameModel.steerSpeed * this.steerSpeedScale;
+        this.velocity += (targetVelocity - this.velocity) * Math.min(1, dt * GameModel.steerResponsiveness);
         this.flameTimer = 0.1;
       }
       this.playerY += this.velocity * dt;
@@ -807,6 +810,8 @@ GameModel.playerScreenFraction = 0.28;
 
 /** Sideways speed while steering, in playfield units per second. */
 GameModel.steerSpeed = 0.75;
+/** How quickly steering eases to its target speed (higher = snappier). */
+GameModel.steerResponsiveness = 12.0;
 /**
  * Portrait climbs a little faster than landscape scrolls, since steering
  * sideways is easier than flapping against gravity: 1.3 playfield units per
@@ -814,5 +819,10 @@ GameModel.steerSpeed = 0.75;
  */
 GameModel.steerForwardSpeed = 1.3;
 GameModel.steerForwardSpeedMultiplier = GameModel.steerForwardSpeed / GameModel.scrollSpeed;
+/**
+ * Landscape glide's forward speed on Normal: faster than flapping (1.08) and
+ * portrait (1.3), since its wide view shows more of the cave ahead.
+ */
+GameModel.glideForwardSpeed = 1.45;
 
 GameModel.bestKey = 'jetman.best';
