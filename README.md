@@ -11,12 +11,14 @@ Open `index.html` in a browser. It works straight from disk (`file://`) or from 
 - **Portrait:** the same cave turned a quarter turn. The pilot climbs on his own; steer with ← / →, by holding the left or right half of the screen, or by swiping.
 - **Touch steering:** with **Hold**, he moves toward whichever half of the screen you're pressing. With **Swipe**, he moves the way you swipe, while your finger moves, and sliding back reverses him. Portrait and Glide each have their own choice: portrait starts on Hold and Glide on Swipe. The Get Ready capsule just says "Tap to start". On touch screens, the Get Ready screen in Glide and portrait shows an animated hint for the chosen controls: a sliding finger for Swipe, or the two screen halves lighting up in turn for Hold.
 - **Menu:** pick one of seven pilots (Navy, Stealth, Pink, Mecha, Vanguard, Joker, Hero) with the swatches or ← / →, then Play. The trophy opens the local top-5 board and the gear opens Settings.
-- **Esc** closes panels and returns to the menu between runs.
+- **Pause:** the pause button beside the best score, **Esc** or **P** mid-run. The game also pauses by itself if the page is hidden or loses focus. Resume (the button, Esc, P, Space or Enter) counts down 3-2-1 before play continues; Menu ends the run.
+- **Esc** closes panels, pauses and resumes mid-run, and returns to the menu between runs.
+- The first block comes after a longer stretch of calm cave at the start of each run.
 
 ### Speed and levels
 
-- Runs start at 85% of each mode's speed and get a notch faster every 10 seconds of play (Slow-Mo stretches the wait), up to 12 notches, about 1.56× the tuned speed after two minutes. A **SPEED UP** banner marks each notch. Portrait climbs at 1.4 playfield units a second on Normal before the ramp.
-- Points also move you through levels: level 2 at 500 points, then each level needs 300 more than the one before (500, 800, 1100…). The cave stays the same; its colors, scenery and drifting motes crossfade over 1.6 seconds, with a chirp and a **LEVEL** banner naming the new look:
+- Runs start at 85% of each mode's speed and get a notch (6%) faster every 15 seconds of play (Slow-Mo stretches the wait), up to 12 notches, about 1.46× the tuned speed after three minutes. A **SPEED UP** banner marks each notch. Portrait climbs at 1.4 playfield units a second on Normal before the ramp.
+- Points also move you through levels: level 2 at 500 points, then each level needs 300 more than the one before (500, 800, 1100…). The cave stays the same; its colors, scenery and drifting motes crossfade over 1.6 seconds, with a chirp and a **LEVEL** banner naming the new look. Blocks not yet on screen are cleared, and no new ones come into view until the banner has gone, so each level starts with a calm run-in:
   1. **Crystal Cave:** the original violet cave with cyan and pink crystals.
   2. **Battle Station:** a grey space-station interior with plated walls, conduits, towering superstructure, red warning lights and armoured blocks.
   3. **Magma Core:** red rock, orange light and rising embers.
@@ -27,7 +29,7 @@ Open `index.html` in a browser. It works straight from disk (`file://`) or from 
 
 ### Power-ups
 
-One power-up floats in the gap after a block every 10 to 15 blocks, and only one is in play at a time. Active ones show as chips under the score, with the seconds left.
+One power-up floats in the gap after a block every 10 to 15 blocks, one at a time. Up to two can be in effect at once (a held shield counts), always of different kinds. Active ones show as chips under the score, with the seconds left; the level and speed banners appear below them, each in its own slot.
 
 - **Shield:** absorbs the next hit. A block it hits is destroyed, or you're nudged off the wall, followed by a short blinking grace period.
 - **Mini Blocks** (8 s): blocks shrink.
@@ -65,12 +67,12 @@ The settings match the app:
 | `js/renderer.js` | Draws the backdrop (cave or station scenery in the level's colors), walls, blocks, power-ups, bolts, shield, particles and pilot into the canvas | `GameRenderer.swift` |
 | `js/pilot2d.js` | Flat 2D pilots for every skin (fallback if 3D sprites can't be made) | `GameRenderer.swift` (2D sprites) |
 | `js/pilot3d.js` | Software 3D renderer: pilot meshes per skin, menu turntable, cached in-game side/back sprites | `PilotTurntableView.swift` |
-| `js/logo.js` | Riveted two-tone panel lettering for JETMAN, GET READY, GAME OVER and HIGH SCORES | `JetmanLogo.swift` |
+| `js/logo.js` | Riveted two-tone panel lettering for JETMAN, GET READY, GAME OVER, HIGH SCORES, PAUSED and the 3-2-1 countdown | `JetmanLogo.swift` |
 | `js/icons.js` | Inline SVG stand-ins for the SF Symbols the app uses | — |
 | `js/scoreboard.js` | Local top-5 scores | `Scoreboard.swift` |
 | `js/sound.js` | Flap, start, crash, high-score, power-up, shield-break and laser sounds synthesized at startup | `SoundEngine.swift` |
 | `js/controlsdemo.js` | Animated touch steering hint on the Get Ready screen (Swipe and Hold) | `ControlsDemo.swift` |
-| `js/app.js` | Screens, HUD, power-up chips and run banners, hold/swipe/keyboard input, menu layout choice and the frame loop | `ContentView.swift` |
+| `js/app.js` | Screens, HUD, power-up chips and run banners, pause and countdown, hold/swipe/keyboard input, menu layout choice and the frame loop | `ContentView.swift` |
 
 ## Porting notes
 

@@ -30,8 +30,10 @@ const PowerUpKind = {
 for (const id of POWER_UP_IDS) PowerUpKind[id].id = id;
 
 const PowerUpTuning = {
-  /** One power-up every this many blocks (inclusive range), counted only while no power-up is in play. */
+  /** One power-up every this many blocks (inclusive range), counted while fewer than `maxActive` are in effect. */
   blocksBetween: [10, 15],
+  /** Power-ups that can be in effect at once. */
+  maxActive: 2,
   /** Pickup radius, in playfield units. */
   radius: 0.034,
   /** Block size while Mini Blocks is active (height; width shrinks half as much). */

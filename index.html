@@ -45,22 +45,33 @@
       </div>
     </div>
 
-    <!-- In-game overlays: score bar, Get Ready and Game Over cards. -->
+    <!-- In-game overlays: score bar, Get Ready, Game Over and Paused cards. -->
     <div id="game-screen" class="screen is-hidden">
       <div id="score-bar" class="score-bar is-hidden">
         <div class="score-row-top">
           <div class="glass capsule score-pill"><span class="label-icon" data-icon="flame"></span><span id="score-value">0</span></div>
-          <div class="glass capsule best-pill"><span class="label-icon" data-icon="crown"></span><span id="best-value">0</span></div>
+          <div class="score-row-end">
+            <div class="glass capsule best-pill"><span class="label-icon" data-icon="crown"></span><span id="best-value">0</span></div>
+            <button id="pause-button" class="glass-button icon-button pause-button is-gone" type="button" aria-label="Pause" title="Pause"><span data-icon="pause"></span></button>
+          </div>
         </div>
         <!-- Active power-ups: icon plus seconds left (the shield shows until used). -->
         <div id="power-up-chips" class="power-up-chips"></div>
-      </div>
-
-      <!-- Brief banners during a run: a new level, a speed-up or a Brake. -->
-      <div class="run-banner-area" role="status" aria-live="polite">
-        <div id="run-banner" class="glass run-banner is-out is-hidden">
-          <div class="run-banner-title"><span class="run-banner-symbol"></span><span class="run-banner-text"></span></div>
-          <div class="run-banner-subtitle"></div>
+        <!-- Brief banners during a run, below the chips so they never cover them:
+             a new level, and a speed-up or Brake, each in its own slot. -->
+        <div class="run-banners" role="status" aria-live="polite">
+          <div class="banner-slot">
+            <div id="level-banner" class="glass run-banner major is-out is-hidden">
+              <div class="run-banner-title"><span class="run-banner-symbol"></span><span class="run-banner-text"></span></div>
+              <div class="run-banner-subtitle"></div>
+            </div>
+          </div>
+          <div id="speed-banner-slot" class="banner-slot">
+            <div id="speed-banner" class="glass run-banner is-out is-hidden">
+              <div class="run-banner-title"><span class="run-banner-symbol"></span><span class="run-banner-text"></span></div>
+              <div class="run-banner-subtitle"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -87,6 +98,18 @@
             <button id="again-button" class="glass-button large prominent" type="button"><span class="label-icon" data-icon="arrowClockwise"></span>Play Again</button>
           </div>
         </div>
+      </div>
+
+      <!-- Paused: the card, then a 3-2-1 countdown after Resume. -->
+      <div id="pause-overlay" class="pause-overlay is-hidden" role="dialog" aria-modal="true" aria-label="Paused">
+        <div class="glass pause-card">
+          <div id="pause-title" class="pause-title"></div>
+          <div class="card-buttons">
+            <button id="pause-menu-button" class="glass-button large" type="button"><span class="label-icon" data-icon="house"></span>Menu</button>
+            <button id="resume-button" class="glass-button large prominent resume-button" type="button"><span class="label-icon" data-icon="play"></span>Resume</button>
+          </div>
+        </div>
+        <div id="countdown" class="countdown"></div>
       </div>
     </div>
 

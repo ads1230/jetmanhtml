@@ -46,6 +46,8 @@ const Icons = (() => {
     speaker: '<path d="M2.6 8.4h4.1l5.8-4.9v17l-5.8-4.9H2.6a1.1 1.1 0 0 1-1.1-1.1V9.5a1.1 1.1 0 0 1 1.1-1.1z"/>',
     speakerWave: '<path d="M1.3 8.6h3.6L10 4.1v15.8l-5.1-4.5H1.3a.9.9 0 0 1-.9-.9V9.5a.9.9 0 0 1 .9-.9z"/>' +
       stroke('M13.4 9.2a4 4 0 0 1 0 5.6M16.5 6.5a7.8 7.8 0 0 1 0 11M19.6 3.8a11.6 11.6 0 0 1 0 16.4', 1.9),
+    /** pause.fill: two rounded bars. */
+    pause: '<rect x="5.6" y="3.8" width="4.6" height="16.4" rx="1.3"/><rect x="13.8" y="3.8" width="4.6" height="16.4" rx="1.3"/>',
     /** chevron.forward.2: two chevrons side by side, for SPEED UP. */
     chevronForward2: stroke('M4.6 5.2l6.6 6.8-6.6 6.8M12.2 5.2l6.6 6.8-6.6 6.8', 3.1),
     trash: stroke('M4.5 6.5h15M9.5 6.5V4.6a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.9M6.5 6.5l.9 12.7a1.6 1.6 0 0 0 1.6 1.5h6' +

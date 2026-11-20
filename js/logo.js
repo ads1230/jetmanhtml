@@ -3,8 +3,8 @@
 // The game's title logo and panel lettering (port of JetmanLogo.swift):
 // chunky mechanical letters built from riveted panels, two-tone (cool on
 // top, hot below) split by a glowing seam, with an extruded edge, neon glow
-// and a periodic shine sweep. Used for JETMAN, GET READY, GAME OVER and
-// HIGH SCORES.
+// and a periodic shine sweep. Used for JETMAN, GET READY, GAME OVER, HIGH
+// SCORES, PAUSED and the 3-2-1 resume countdown.
 
 const PanelLettering = (() => {
   const cellWidth = 10;
@@ -83,6 +83,21 @@ const PanelLettering = (() => {
     V: { panels: [panel(0, 0, 3.5, 9, { tl: 1 }), panel(6.5, 0, 3.5, 9, { tr: 1 }),
       [[0, 9], [10, 9], [6.6, 14], [3.4, 14]]],
     light: [1.05, 1.4], lightColor: pink, vents: [7.3, 3.6] },
+    P: { panels: [panel(0, 0, 3.5, 14, { tl: 1, bl: 0.8 }), panel(3.5, 0, 6.5, 3.5, { tr: 1.2 }),
+      panel(6.5, 3.5, 3.5, 3.6, { br: 1.2 }), panel(3.5, 5.5, 4.6, 2.6, { br: 0.6 })],
+    light: [6.6, 1.3], lightColor: orange, vents: [0.9, 9.4] },
+    U: { panels: [panel(0, 0, 3.5, 14, { tl: 1, bl: 1.6 }), panel(6.5, 0, 3.5, 14, { tr: 1, br: 1.6 }),
+      panel(3.5, 10.5, 3, 3.5)],
+    light: [1.05, 1.6], lightColor: green, vents: [7.3, 6.2] },
+    1: { panels: [panel(1, 0, 2, 3.5, { tl: 1.5 }), panel(3, 0, 4, 10.5, { tr: 1 }),
+      panel(1, 10.5, 8, 3.5, { br: 1, bl: 1 })],
+    light: [4.3, 1.3], lightColor: green, vents: [3.8, 6.2] },
+    2: { panels: [panel(0, 0, 10, 3.5, { tl: 1.6, tr: 1.2 }), panel(6.5, 3.5, 3.5, 2.2),
+      panel(0, 5.5, 10, 3.1, { tr: 0.8, bl: 0.8 }), panel(0, 8.4, 3.5, 2.3), panel(0, 10.5, 10, 3.5, { br: 0.8, bl: 1.2 })],
+    light: [6.4, 1.3], lightColor: cyan, vents: [5.2, 11.4] },
+    3: { panels: [panel(0, 0, 10, 3.5, { tl: 1.2, tr: 1.6 }), panel(6.5, 3.5, 3.5, 7),
+      panel(2, 5.25, 4.5, 3.5, { tl: 0.9, bl: 0.9 }), panel(0, 10.5, 10, 3.5, { br: 1.6, bl: 1.2 })],
+    light: [1.6, 1.3], lightColor: pink, vents: [7.3, 6.2] },
     Y: { panels: [panel(0, 0, 3.5, 6, { tl: 1 }), panel(6.5, 0, 3.5, 6, { tr: 1 }),
       panel(0, 5.2, 10, 3.6, { br: 3, bl: 3 }), panel(3, 8.8, 4, 5.2, { br: 1, bl: 1 })],
     light: [1.05, 1.4], lightColor: green, vents: [3.8, 10.2] },

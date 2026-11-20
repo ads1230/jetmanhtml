@@ -25,17 +25,22 @@ const LevelTuning = {
   },
 
   /** Seconds of play between speed notches (Slow-Mo stretches this). */
-  secondsPerNotch: 10,
-  /** Runs start at this fraction of each mode's tuned speed, reaching it after ~30 s of notches. */
+  secondsPerNotch: 15,
+  /** Runs start at this fraction of each mode's tuned speed, reaching it after ~45 s of notches. */
   startSpeed: 0.85,
   /** Each notch adds this fraction of the starting speed. */
-  notchStep: 0.07,
-  /** Top speed: 0.85 x 1.84 ≈ 1.56x the tuned speed, after two minutes. */
+  notchStep: 0.06,
+  /** Top speed: 0.85 x 1.72 ≈ 1.46x the tuned speed, after three minutes. */
   maxNotches: 12,
   /** Brake: notches knocked off when collected... */
   brakeNotches: 2,
   /** ...and only offered once he's at least this many notches up. */
   brakeMinimumNotch: 3,
+  /**
+   * Seconds the "LEVEL n" banner stays up. No blocks come into view until it
+   * has gone.
+   */
+  levelBannerDuration: 2.4,
   /** Seconds to crossfade from one level's look to the next. */
   themeTransition: 1.6,
 };

@@ -104,6 +104,14 @@ class GameModel {
     this.lastTime = null;
     this.nextObstacleX = Infinity;
     this.calmUntilX = Infinity;
+    /** No new blocks (and a straight cave) until this time: the level-change run-in. */
+    this.obstacleHoldUntil = -Infinity;
+
+    // Pause.
+    /** Frozen mid-run (pause button, or the page losing focus). */
+    this.isPaused = false;
+    /** Seconds left on the countdown after Resume (null when not counting); play stays frozen until it ends. */
+    this.resumeCountdown = null;
     this.caveCenter = 0.5;
     this.caveDrift = 0;
 
@@ -208,6 +216,10 @@ class GameModel {
     this.previousLevel = this.level;
     this.level = level;
     this.levelChangeTime = this.time;
+    // A clear, calm run-in: drop blocks not yet on screen, and hold new ones
+    // back until the level banner has gone (plus its fade-out).
+    this.obstacles = this.obstacles.filter((o) => !(o.x > this.cameraX + this.aspect));
+    this.obstacleHoldUntil = this.time + LevelTuning.levelBannerDuration + 0.3;
   }
 
   /** Blends the palette and scenery from the previous level's look while a transition is in progress. */
@@ -232,6 +244,22 @@ class GameModel {
   get timeSinceCrash() { return this.time - this.crashTime; }
   get canRestart() { return this.phase === 'crashed' && this.timeSinceCrash > 0.7; }
 
+  // MARK: Pause
+
+  pause() {
+    if (this.phase !== 'playing') return;
+    this.isPaused = true;
+    this.resumeCountdown = null;
+    this.steerDirection = 0;
+    this.steerExpiry = null;
+  }
+
+  /** Starts the countdown back into play. */
+  resume() {
+    if (!this.isPaused || this.resumeCountdown !== null) return;
+    this.resumeCountdown = GameModel.resumeCountdownLength;
+  }
+
   // MARK: Control modes
 
   /** Switches control mode, starting over at "Get Ready" if it changed (e.g. the device rotated mid-run). */
@@ -251,6 +279,11 @@ class GameModel {
    * the sideways speed for this input.
    */
   steer(direction, expiresAfter = null, speedScale = 1) {
+    if (this.isPaused) {
+      this.steerDirection = 0;
+      this.steerExpiry = null;
+      return;
+    }
     this.steerDirection = direction;
     this.steerExpiry = direction === 0 || expiresAfter === null ? null : this.time + expiresAfter;
     this.steerSpeedScale = speedScale;
@@ -268,6 +301,7 @@ class GameModel {
 
   /** A tap/click/key press: one jetpack burst, Flappy Bird style. */
   flap() {
+    if (this.isPaused) return;
     // In steering mode a flap key just starts or restarts the run.
     if (this.usesSteering) {
       if (this.phase === 'ready') {
@@ -336,6 +370,8 @@ class GameModel {
     this.timeScale = 1;
     this.speedNotch = 0;
     this.notchProgress = 0;
+    this.isPaused = false;
+    this.resumeCountdown = null;
     this.rampScale = LevelTuning.startSpeed;
     this.level = 0;
     this.previousLevel = 0;
@@ -349,6 +385,7 @@ class GameModel {
     this.caveDrift = 0;
     this.calmUntilX = Infinity;
     this.nextObstacleX = Infinity;
+    this.obstacleHoldUntil = -Infinity;
     this.isNewBest = false;
     this.ensureColumns();
   }
@@ -359,8 +396,8 @@ class GameModel {
     this.points = 0;
     // Columns already generated stay calm; give a little more calm cave
     // before the walls start winding.
-    this.calmUntilX = this.cameraX + this.aspect + 0.5;
-    this.nextObstacleX = this.cameraX + this.aspect + 0.3;
+    this.calmUntilX = this.cameraX + this.aspect + 0.5 + GameModel.startRunIn;
+    this.nextObstacleX = this.cameraX + this.aspect + 0.3 + GameModel.startRunIn;
   }
 
   crash() {
@@ -414,6 +451,18 @@ class GameModel {
     const dt = Math.min(Math.max(now - this.lastTime, 0), 1 / 30);
     this.lastTime = now;
     if (!(dt > 0)) return;
+    if (this.isPaused) {
+      // Frozen; only the resume countdown runs.
+      if (this.resumeCountdown !== null) {
+        if (this.resumeCountdown - dt <= 0) {
+          this.isPaused = false;
+          this.resumeCountdown = null;
+        } else {
+          this.resumeCountdown -= dt;
+        }
+      }
+      return;
+    }
     this.time += dt;
 
     // Glide to the new position when the view changes shape mid-run; snap otherwise.
@@ -542,6 +591,12 @@ class GameModel {
   }
 
   spawnObstacles() {
+    if (this.time < this.obstacleHoldUntil) {
+      // Keep the next block, and the winding, just out of view.
+      this.nextObstacleX = Math.max(this.nextObstacleX, this.cameraX + this.aspect + 0.3);
+      this.calmUntilX = Math.max(this.calmUntilX, this.cameraX + this.aspect + 0.6);
+      return;
+    }
     while (this.nextObstacleX < this.cameraX + this.aspect + 0.3) {
       const width = GameModel.obstacleWidth;
       // The walls can slope across the block's width, so fit it inside the
@@ -696,18 +751,19 @@ class GameModel {
 
   /** Places a power-up in the clear gap after a block, every few blocks. */
   spawnPickupIfDue(blockEndX) {
-    // One power-up at a time: none while one is in effect (including a shield
-    // still held) or another is still floating in the cave. Blocks only count
-    // toward the next one while nothing is in play, so there's always a full
-    // gap after an effect ends.
-    if (this.activePowerUps.length > 0 || this.pickups.length > 0) return;
+    // Up to two power-ups at once (a shield still held counts), and only one
+    // floating in the cave at a time. Blocks count toward the next one while
+    // there's room for it.
+    const active = this.activePowerUps.map((p) => p.kind);
+    if (active.length >= PowerUpTuning.maxActive || this.pickups.length > 0) return;
     this.blocksUntilPickup -= 1;
     if (this.blocksUntilPickup > 0) return;
     this.blocksUntilPickup = blocksUntilNextPickup();
     const x = blockEndX + (GameModel.obstacleSpacing - GameModel.obstacleWidth) / 2;
     const bounds = this.caveBounds(x);
     // Brake is only offered once he's going fast, and more often the faster he goes.
-    const kinds = POWER_UP_IDS.filter((k) => k !== 'brake');
+    // A second power-up is always a different kind from the first.
+    const kinds = POWER_UP_IDS.filter((k) => k !== 'brake' && !active.includes(k));
     if (this.speedNotch >= LevelTuning.brakeMinimumNotch) {
       for (let i = 0; i < (this.speedNotch >= 6 ? 3 : 1); i++) kinds.push('brake');
     }
@@ -870,6 +926,10 @@ GameModel.obstacleSpacing = 1.62 * GameModel.caveGap;
 GameModel.obstacleWidth = 0.13 * GameModel.caveGap;
 GameModel.obstacleHeight = 0.33 * GameModel.caveGap;
 GameModel.tallObstacleHeight = 0.5 * GameModel.caveGap;
+/** Clear, calm cave before the first block of a run... */
+GameModel.startRunIn = 1.6;
+/** Seconds of countdown after Resume before play continues. */
+GameModel.resumeCountdownLength = 3.0;
 /** Minimum open lane beside an obstacle so every block is passable. */
 GameModel.laneClearance = 0.25;
 /**

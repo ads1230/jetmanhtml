@@ -304,6 +304,117 @@ button:focus-visible {
   to { opacity: 1; }
 }
 
+/* Pause button, right of the best score while playing; it scales away when
+   paused or after a crash, and the best score slides over. */
+.score-row-end {
+  display: flex;
+  align-items: center;
+}
+
+.pause-button {
+  margin-left: 8px;
+  overflow: hidden;
+  transition: width 0.4s var(--snappy), margin-left 0.4s var(--snappy), transform 0.4s var(--snappy),
+    opacity 0.25s ease, filter 0.2s ease, visibility 0s linear 0s;
+}
+
+.pause-button.is-gone {
+  width: 0;
+  margin-left: 0;
+  border-width: 0;
+  transform: scale(0.4);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: width 0.4s var(--snappy), margin-left 0.4s var(--snappy), transform 0.4s var(--snappy),
+    opacity 0.25s ease, filter 0.2s ease, visibility 0s linear 0.4s;
+}
+
+/* Paused: dims the game and shows the card; after Resume, a 3-2-1 countdown
+   in panel lettering (each digit scales down from 1.6x as it fades in, and
+   up as it fades out) with a lighter dim. */
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  background-color: rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  transition: background-color 0.4s var(--snappy);
+}
+
+.pause-overlay.counting {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+.pause-card {
+  box-sizing: border-box;
+  max-width: 420px;
+  padding: 24px 32px;
+  border-radius: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  transition: transform 0.4s var(--snappy), opacity 0.25s ease, visibility 0s linear 0s;
+}
+
+.pause-overlay.counting .pause-card {
+  transform: scale(0.9);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.4s var(--snappy), opacity 0.25s ease, visibility 0s linear 0.4s;
+}
+
+.pause-title {
+  width: 300px;
+  max-width: 100%;
+}
+
+.pause-title .panel-title {
+  width: 100%;
+}
+
+.pause-card .card-buttons {
+  margin-top: 0;
+}
+
+.resume-button {
+  font-weight: 600;
+}
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.countdown .panel-title {
+  position: absolute;
+  height: 110px;
+  width: auto;
+  opacity: 0;
+  transform: scale(1.6);
+  transition: transform 0.4s var(--snappy), opacity 0.3s ease;
+}
+
+.countdown .panel-title.current {
+  opacity: 1;
+  transform: none;
+}
+
+/* Showing the overlay afresh: no transitions (it appears as it was left). */
+.pause-overlay.instant,
+.pause-overlay.instant * {
+  transition: none !important;
+}
+
 /* Game Over card. */
 .game-over {
   position: absolute;
@@ -1164,17 +1275,27 @@ button:focus-visible {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Run banners: "LEVEL 2 / Battle Station", "SPEED UP" and "BRAKE", in a glass
-   capsule 80 points below the top. They scale up from 0.85 and fade in, and
-   morph to the new size when one message replaces another. */
-.run-banner-area {
+/* Run banners: "LEVEL 2 / Battle Station" in one slot and "SPEED UP" or
+   "BRAKE" in another, centered below the power-up chips; the speed slot sits
+   under the level banner while that's up. Each scales up from 0.85 and fades
+   in, and morphs to the new size when another message replaces it. */
+.run-banners {
+  position: relative;
+  margin-top: 8px;
+  pointer-events: none;
+}
+
+.banner-slot {
   position: absolute;
-  top: calc(80px + var(--safe-top));
+  top: 0;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  pointer-events: none;
+}
+
+#speed-banner-slot {
+  transition: transform 0.4s var(--snappy);
 }
 
 .run-banner {

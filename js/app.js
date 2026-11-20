@@ -36,6 +36,8 @@ let hud = {
   controlMode: 'flap', isSteering: false, isPortrait: false,
   powerUps: [], powerUpKey: '', pickupCount: 0, shieldBreakCount: 0, shotCount: 0, blastCount: 0,
   speedNotch: 0, level: 0, brakeCount: 0,
+  /** Paused mid-run, and the whole seconds left on the resume countdown (null when not counting down). */
+  isPaused: false, countdown: null,
 };
 
 function syncHUD() {
@@ -59,6 +61,8 @@ function syncHUD() {
     speedNotch: model.speedNotch,
     level: model.level,
     brakeCount: model.brakeCount,
+    isPaused: model.isPaused,
+    countdown: model.resumeCountdown === null ? null : Math.ceil(model.resumeCountdown),
   };
   next.powerUpKey = next.powerUps.map((p) => `${p.kind}:${p.secondsLeft === null ? '' : p.secondsLeft}`).join('|');
   const prev = hud;
@@ -71,10 +75,10 @@ function syncHUD() {
   if (next.crashCount !== prev.crashCount) onCrash();
   if (next.level !== prev.level) onLevelChange();
   if (next.speedNotch > prev.speedNotch && next.phase === 'playing') {
-    showBanner({ title: 'SPEED UP', symbol: Icons.svg('chevronForward2'), color: SystemColor.orange });
+    showBanner(banners.speed, { title: 'SPEED UP', symbol: Icons.svg('chevronForward2'), color: SystemColor.orange });
   }
   if (next.brakeCount !== prev.brakeCount) {
-    showBanner({ title: 'BRAKE', subtitle: 'Speed down', symbol: powerUpIconSVG('gauge'), color: PowerUpKind.brake.color });
+    showBanner(banners.speed, { title: 'BRAKE', subtitle: 'Speed down', symbol: powerUpIconSVG('gauge'), color: PowerUpKind.brake.color });
   }
   if (next.phase !== prev.phase) onPhaseChange();
   updateGameOverlay(prev, next);
@@ -117,7 +121,8 @@ function onPhaseChange() {
     // Steering runs have no flaps, so mark the start with a chirp.
     if (hud.isSteering && typeof sound !== 'undefined') sound.play('start');
   } else {
-    clearBanner();
+    clearBanner(banners.level);
+    clearBanner(banners.speed);
   }
 }
 
@@ -125,24 +130,33 @@ function onPhaseChange() {
 function onLevelChange() {
   if (!(hud.level > 0)) return;
   playSound('start');
-  showBanner({ title: `LEVEL ${hud.level + 1}`, subtitle: LevelTheme.forLevel(hud.level).name, isMajor: true });
+  showBanner(banners.level, { title: `LEVEL ${hud.level + 1}`, subtitle: LevelTheme.forLevel(hud.level).name });
 }
 
 // MARK: Run banners
 
 /**
- * Brief banners during a run (RunBanner in ContentView.swift):
- * { title, subtitle, symbol (icon markup), color, isMajor }. Level banners
- * are big, last 2.2 s and aren't replaced by a speed-up; the others last 1.3 s.
+ * Brief banners during a run (RunBanner in ContentView.swift), in two slots
+ * so neither hides the other: the big "LEVEL n" banner (up for
+ * `LevelTuning.levelBannerDuration`) and, below it, "SPEED UP" or "BRAKE"
+ * (1.3 s). A message is { title, subtitle, symbol (icon markup), color }.
  */
-const runBanner = { message: null, timer: null, hideTimer: null };
+const banners = {
+  level: { el: $('level-banner'), message: null, timer: null, hideTimer: null, seconds: LevelTuning.levelBannerDuration },
+  speed: { el: $('speed-banner'), message: null, timer: null, hideTimer: null, seconds: 1.3 },
+};
 
-function showBanner(message) {
-  if (runBanner.message && runBanner.message.isMajor && !message.isMajor) return;
-  const replacing = runBanner.message !== null;
-  runBanner.message = message;
-  const el = $('run-banner');
-  clearTimeout(runBanner.hideTimer);
+/** Moves the speed slot below the level banner while that's up (or back up when it goes). */
+function placeSpeedBanner() {
+  const level = banners.level;
+  $('speed-banner-slot').style.transform = level.message ? `translateY(${level.el.offsetHeight + 8}px)` : '';
+}
+
+function showBanner(slot, message) {
+  const replacing = slot.message !== null;
+  slot.message = message;
+  const el = slot.el;
+  clearTimeout(slot.hideTimer);
   if (replacing) {
     // Already up: morph the capsule to the new size and fade the new text in.
     const from = { width: `${el.offsetWidth}px`, height: `${el.offsetHeight}px` };
@@ -158,23 +172,24 @@ function showBanner(message) {
     void el.offsetWidth; // start the transition from the scaled-down, clear state
     el.classList.remove('is-out');
   }
-  clearTimeout(runBanner.timer);
-  runBanner.timer = setTimeout(clearBanner, message.isMajor ? 2200 : 1300);
+  if (slot === banners.level) placeSpeedBanner();
+  clearTimeout(slot.timer);
+  slot.timer = setTimeout(() => clearBanner(slot), slot.seconds * 1000);
 }
 
-function clearBanner() {
-  clearTimeout(runBanner.timer);
-  runBanner.timer = null;
-  if (!runBanner.message) return;
-  runBanner.message = null;
-  const el = $('run-banner');
+function clearBanner(slot) {
+  clearTimeout(slot.timer);
+  slot.timer = null;
+  if (!slot.message) return;
+  slot.message = null;
+  const el = slot.el;
   el.classList.add('is-out');
-  clearTimeout(runBanner.hideTimer);
-  runBanner.hideTimer = setTimeout(() => el.classList.add('is-hidden'), 400);
+  clearTimeout(slot.hideTimer);
+  slot.hideTimer = setTimeout(() => el.classList.add('is-hidden'), 400);
+  if (slot === banners.level) placeSpeedBanner();
 }
 
 function fillBanner(el, message) {
-  el.classList.toggle('major', !!message.isMajor);
   el.style.setProperty('--banner-color', css(message.color || [1, 1, 1]));
   el.querySelector('.run-banner-symbol').innerHTML = message.symbol || '';
   el.querySelector('.run-banner-text').textContent = message.title;
@@ -343,6 +358,14 @@ const readyTitle = new PanelTitle('GET READY');
 $('ready-title').appendChild(readyTitle.canvas);
 const gameOverTitle = new PanelTitle('GAME OVER');
 $('game-over-title').appendChild(gameOverTitle.canvas);
+const pauseTitle = new PanelTitle('PAUSED');
+$('pause-title').appendChild(pauseTitle.canvas);
+/** The resume countdown's digits, 3-2-1, in panel lettering; only the current one is visible. */
+const countdownDigits = new Map(['3', '2', '1'].map((digit) => {
+  const title = new PanelTitle(digit);
+  $('countdown').appendChild(title.canvas);
+  return [Number(digit), title.canvas];
+}));
 
 /** Touch screens get "Tap" wording; keyboards and mice get "Click or press Space". */
 function usesTouchWording() {
@@ -459,6 +482,37 @@ function updateGameOverlay(prev, next, force = false) {
     $('menu-button').disabled = !next.canRestart;
     $('again-button').disabled = !next.canRestart;
   }
+  // Pause button while playing; the pause card or countdown while paused.
+  const pauseAvailable = next.phase === 'playing' && !next.isPaused;
+  if (force || pauseAvailable !== (prev.phase === 'playing' && !prev.isPaused)) {
+    const button = $('pause-button');
+    if (!pauseAvailable && button.contains(document.activeElement)) document.activeElement.blur();
+    button.classList.toggle('is-gone', !pauseAvailable);
+  }
+  const pausedShown = next.phase === 'playing' && next.isPaused;
+  const wasPausedShown = prev.phase === 'playing' && prev.isPaused;
+  if (force || pausedShown !== wasPausedShown || prev.countdown !== next.countdown) {
+    updatePauseOverlay(pausedShown, !wasPausedShown, next.countdown);
+  }
+}
+
+/**
+ * Shows the pause card, or the countdown digit after Resume. The overlay
+ * appears as it is, then animates between the card and each digit.
+ */
+function updatePauseOverlay(shown, appearing, countdown) {
+  const overlay = $('pause-overlay');
+  if (shown && appearing) {
+    overlay.classList.add('instant');
+    overlay.classList.toggle('counting', countdown !== null);
+    for (const [digit, canvas] of countdownDigits) canvas.classList.toggle('current', digit === countdown);
+    void overlay.offsetWidth;
+    overlay.classList.remove('instant');
+  } else {
+    overlay.classList.toggle('counting', countdown !== null);
+    for (const [digit, canvas] of countdownDigits) canvas.classList.toggle('current', digit === countdown);
+  }
+  setShown(overlay, shown);
 }
 
 function fillGameOverCard() {
@@ -477,6 +531,15 @@ function fillGameOverCard() {
 
 onClick($('menu-button'), () => goToMenu());
 onClick($('again-button'), () => model.resetToReady());
+onClick($('pause-button'), () => model.pause());
+onClick($('resume-button'), () => model.resume());
+onClick($('pause-menu-button'), () => goToMenu());
+
+/** Pause or resume mid-run (Esc, P). */
+function togglePause() {
+  if (model.isPaused) model.resume();
+  else model.pause();
+}
 
 // MARK: Controls demo
 
@@ -896,7 +959,7 @@ function resetSwipe() {
 
 /** Whether an event target is a control or panel that handles its own input. */
 function isInteractive(target) {
-  return target instanceof Element && !!target.closest('button, input, select, label, .overlay');
+  return target instanceof Element && !!target.closest('button, input, select, label, .overlay, .pause-overlay');
 }
 
 /**
@@ -1031,7 +1094,8 @@ window.addEventListener('keydown', (e) => {
     if (confirmsReset) closeResetAlert();
     else if (showsSettings) closeSettings();
     else if (showsScoreboard) closeScoreboard();
-    else if (activeScreen === 'game' && hud.phase !== 'playing') goToMenu();
+    else if (activeScreen === 'game' && model.phase === 'playing') togglePause();
+    else if (activeScreen === 'game') goToMenu();
     return;
   }
   if (confirmsReset) return; // The alert only answers its own buttons (and Escape).
@@ -1052,6 +1116,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (e.repeat) return;
     if (activeScreen === 'menu') startGame();
+    else if (model.isPaused) model.resume();
     else model.flap();
     return;
   }
@@ -1064,7 +1129,17 @@ window.addEventListener('keydown', (e) => {
     if (showsSettings) closeSettings();
     else if (showsScoreboard) closeScoreboard();
     else if (activeScreen === 'menu') startGame();
+    else if (model.isPaused) model.resume();
     else model.flap();
+    return;
+  }
+
+  // P pauses and resumes mid-run.
+  if (key === 'p' || key === 'P') {
+    if (inField || activeScreen !== 'game' || model.phase !== 'playing') return;
+    e.preventDefault();
+    if (e.repeat) return;
+    togglePause();
     return;
   }
 
@@ -1099,6 +1174,11 @@ window.addEventListener('blur', () => {
   steeringPointer = null;
   resetSwipe();
   if (model.usesSteering) model.steer(0);
+  // Pause mid-run when the page loses focus, as the app does when it leaves the foreground.
+  model.pause();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) model.pause();
 });
 
 // Long presses shouldn't open menus or select anything mid-game.
@@ -1259,6 +1339,9 @@ function assessFrames() {
 
 // MARK: Frame loop
 
+/** The canvas size and orientation of the frame left on screen while paused (null while not paused). */
+let frozenFrame = null;
+
 function frame(nowMs) {
   requestAnimationFrame(frame);
   if (!paceFrame(nowMs)) return;
@@ -1277,16 +1360,22 @@ function frame(nowMs) {
   model.update(now, worldW / Math.max(worldH, 1));
   syncHUD();
 
-  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  if (portrait) {
-    // World "forward" (+x) points up the screen.
-    ctx.translate(0, view.h);
-    ctx.rotate(-Math.PI / 2);
+  // While paused nothing in the cave moves, so the last frame stays on the
+  // canvas (redrawn only if the canvas is resized).
+  const frozen = model.isPaused ? `${canvas.width}x${canvas.height}:${portrait}` : null;
+  if (frozen === null || frozen !== frozenFrame) {
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    if (portrait) {
+      // World "forward" (+x) points up the screen.
+      ctx.translate(0, view.h);
+      ctx.rotate(-Math.PI / 2);
+    }
+    renderer.showsPlayer = activeScreen === 'game';
+    renderer.skin = PilotSkin[Settings.skin];
+    renderer.screenShake = Settings.screenShake;
+    renderer.draw(ctx, model, worldW, worldH);
   }
-  renderer.showsPlayer = activeScreen === 'game';
-  renderer.skin = PilotSkin[Settings.skin];
-  renderer.screenShake = Settings.screenShake;
-  renderer.draw(ctx, model, worldW, worldH);
+  frozenFrame = frozen;
 
   if (activeScreen === 'menu' && (!renderQuality.slowTurntable || renderQuality.drawn % 2 === 0)) renderTurntable(now);
   renderControlsDemo();
